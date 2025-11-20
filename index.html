@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leistungsnachweis Volleyball</title>
+  <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="title-group">
+      <span class="app-icon">🏐</span>
+      <h1>Leistungsnachweis Volleyball</h1>
+    </div>
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-target="capture-section">Erfassung</button>
+      <button class="tab-btn" data-target="overview-section">Übersicht</button>
+      <button class="tab-btn" data-target="settings-section">Einstellungen</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section id="capture-section" class="section active">
+      <div class="card">
+        <h2>Neuen Eintrag erfassen</h2>
+        <form id="entry-form" class="form-grid">
+          <label>
+            <span>Datum</span>
+            <input type="date" id="entry-date" required>
+          </label>
+          <label>
+            <span>Startzeit</span>
+            <input type="time" id="entry-start" required>
+          </label>
+          <label>
+            <span>Endzeit</span>
+            <input type="time" id="entry-end" required>
+          </label>
+          <label>
+            <span>Trainer</span>
+            <select id="entry-trainer" required></select>
+          </label>
+          <label>
+            <span>Mannschaft</span>
+            <select id="entry-team" required></select>
+          </label>
+          <label>
+            <span>Art</span>
+            <select id="entry-type" required>
+              <option value="Training">Training</option>
+              <option value="Spiel">Spiel</option>
+              <option value="Turnier">Turnier</option>
+              <option value="Sonstiges">Sonstiges</option>
+            </select>
+          </label>
+          <label class="full-width">
+            <span>Notizen</span>
+            <textarea id="entry-notes" rows="3" placeholder="Optional"></textarea>
+          </label>
+          <div class="actions full-width">
+            <button type="submit" class="primary">Eintrag speichern</button>
+            <span id="save-feedback" class="feedback" aria-live="polite"></span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="overview-section" class="section">
+      <div class="card">
+        <div class="card-header">
+          <h2>Übersicht</h2>
+          <div class="filters">
+            <label>
+              <span>Monat</span>
+              <input type="month" id="overview-month">
+            </label>
+            <label>
+              <span>Trainer</span>
+              <select id="filter-trainer"></select>
+            </label>
+            <label>
+              <span>Mannschaft</span>
+              <select id="filter-team"></select>
+            </label>
+            <button id="export-btn" class="secondary">Export als Datei</button>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Datum</th>
+                <th>Wochentag</th>
+                <th>Start</th>
+                <th>Ende</th>
+                <th>Dauer</th>
+                <th>Trainer</th>
+                <th>Mannschaft</th>
+                <th>Typ</th>
+                <th>Notizen</th>
+              </tr>
+            </thead>
+            <tbody id="entries-body">
+              <tr><td colspan="9" class="empty">Keine Einträge für diesen Zeitraum.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="summary" id="summary">
+          <div>
+            <span>Gesamtstunden</span>
+            <strong id="total-duration">0:00</strong>
+          </div>
+          <div id="trainer-breakdown" class="breakdown"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="settings-section" class="section">
+      <div class="card">
+        <h2>Trainer verwalten</h2>
+        <form id="trainer-form" class="inline-form">
+          <input type="text" id="trainer-name" placeholder="Name" required>
+          <button type="submit" class="primary">Trainer hinzufügen</button>
+        </form>
+        <ul id="trainer-list" class="tag-list"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Mannschaften verwalten</h2>
+        <form id="team-form" class="inline-form">
+          <input type="text" id="team-name" placeholder="Name" required>
+          <button type="submit" class="primary">Mannschaft hinzufügen</button>
+        </form>
+        <ul id="team-list" class="tag-list"></ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
