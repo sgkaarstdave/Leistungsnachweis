@@ -941,17 +941,91 @@ function exportToExcel() {
     Number((row.hoursDecimal * HOURLY_RATE).toFixed(2))
   ]);
 
+  const detailsHeader = [
+    'Datum',
+    'Startzeit',
+    'Endzeit',
+    'DauerMinuten',
+    'DauerHHMM',
+    'Mannschaft',
+    'Typ',
+    'Notizen'
+  ];
+
   const monthPart = String(month).padStart(2, '0');
 
-  if (typeof XLSX !== 'undefined') {
-    const overviewSheet = XLSX.utils.aoa_to_sheet([overviewHeader, ...overviewRowValues]);
+  const groupedByTrainer = filtered.reduce((acc, entry) => {
+    (acc[entry.trainerId] = acc[entry.trainerId] || []).push(entry);
+    return acc;
+  }, {});
 
+  const trainerOrder = Object.keys(groupedByTrainer)
+    .map((trainerId) => ({
+      trainerId,
+      trainerName: trainers.find((t) => t.id === trainerId)?.name || 'Unbekannt',
+      entries: groupedByTrainer[trainerId]
+    }))
+    .sort((a, b) => a.trainerName.localeCompare(b.trainerName));
+
+  const detailBlocks = [[], ['Details']];
+
+  trainerOrder.forEach((trainerBlock, index) => {
+    detailBlocks.push([]);
+    detailBlocks.push([`Trainer: ${trainerBlock.trainerName}`, `Monat: ${monthPart}/${year}`]);
+    detailBlocks.push(detailsHeader);
+
+    trainerBlock.entries
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(a.date) - new Date(b.date) || parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)
+      )
+      .forEach((entry) => {
+        const teamName = teams.find((t) => t.id === entry.teamId)?.name || 'Unbekannt';
+        detailBlocks.push([
+          entry.date,
+          entry.startTime,
+          entry.endTime,
+          entry.durationMinutes,
+          formatDuration(entry.durationMinutes),
+          teamName,
+          entry.type,
+          entry.notes || ''
+        ]);
+      });
+
+    if (index < trainerOrder.length - 1) {
+      detailBlocks.push([]);
+    }
+  });
+
+  if (typeof XLSX !== 'undefined') {
+    const overviewSheet = XLSX.utils.aoa_to_sheet([]);
+
+    XLSX.utils.sheet_add_aoa(overviewSheet, detailBlocks, { origin: 0 });
+
+    let nextRow = detailBlocks.length;
+
+    XLSX.utils.sheet_add_aoa(overviewSheet, [[]], { origin: { r: nextRow, c: 0 } });
+    nextRow += 1;
+
+    XLSX.utils.sheet_add_aoa(overviewSheet, [['Übersicht']], { origin: { r: nextRow, c: 0 } });
+    nextRow += 1;
+
+    const overviewStartRow = nextRow;
+    XLSX.utils.sheet_add_aoa(overviewSheet, [overviewHeader, ...overviewRowValues], {
+      origin: { r: overviewStartRow, c: 0 }
+    });
+
+    nextRow += 1 + overviewRowValues.length;
+
+    const overviewDataRowStart = overviewStartRow + 1;
     overviewRowValues.forEach((_, index) => {
       // Neue Spalten für Stundensatz & Betrag mit Excel-Formel befüllen
-      const excelRow = index + 2; // +1 wegen Header, +1 weil 1-basiert
-      const hoursCell = XLSX.utils.encode_cell({ r: excelRow - 1, c: 2 });
-      const rateCell = XLSX.utils.encode_cell({ r: excelRow - 1, c: 7 });
-      const amountCell = XLSX.utils.encode_cell({ r: excelRow - 1, c: 8 });
+      const rowIndex = overviewDataRowStart + index;
+      const hoursCell = XLSX.utils.encode_cell({ r: rowIndex, c: 2 });
+      const rateCell = XLSX.utils.encode_cell({ r: rowIndex, c: 7 });
+      const amountCell = XLSX.utils.encode_cell({ r: rowIndex, c: 8 });
       overviewSheet[rateCell] = { v: HOURLY_RATE, t: 'n', z: '0.00' };
       overviewSheet[amountCell] = { f: `${hoursCell}*${HOURLY_RATE}`, t: 'n', z: '0.00' };
     });
@@ -963,68 +1037,7 @@ function exportToExcel() {
       ['__________________________', '', '__________________________'],
       ['Unterschrift Abteilungsleitung', '', 'Unterschrift Trainer / Übungsleiter']
     ];
-    XLSX.utils.sheet_add_aoa(overviewSheet, signatureBlock, { origin: -1 });
-
-    const detailsHeader = [
-      'Datum',
-      'Startzeit',
-      'Endzeit',
-      'DauerMinuten',
-      'DauerHHMM',
-      'Mannschaft',
-      'Typ',
-      'Notizen'
-    ];
-
-    const groupedByTrainer = filtered.reduce((acc, entry) => {
-      (acc[entry.trainerId] = acc[entry.trainerId] || []).push(entry);
-      return acc;
-    }, {});
-
-    const trainerOrder = Object.keys(groupedByTrainer)
-      .map((trainerId) => ({
-        trainerId,
-        trainerName: trainers.find((t) => t.id === trainerId)?.name || 'Unbekannt',
-        entries: groupedByTrainer[trainerId]
-      }))
-      .sort((a, b) => a.trainerName.localeCompare(b.trainerName));
-
-    const detailBlocks = [[], ['Details']];
-
-    trainerOrder.forEach((trainerBlock, index) => {
-      detailBlocks.push([]);
-      detailBlocks.push([`Trainer: ${trainerBlock.trainerName}`, `Monat: ${monthPart}/${year}`]);
-      detailBlocks.push(detailsHeader);
-
-      trainerBlock.entries
-        .slice()
-        .sort(
-          (a, b) =>
-            new Date(a.date) - new Date(b.date) || parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)
-        )
-        .forEach((entry) => {
-          const teamName = teams.find((t) => t.id === entry.teamId)?.name || 'Unbekannt';
-          detailBlocks.push([
-            entry.date,
-            entry.startTime,
-            entry.endTime,
-            entry.durationMinutes,
-            formatDuration(entry.durationMinutes),
-            teamName,
-            entry.type,
-            entry.notes || ''
-          ]);
-        });
-
-      if (index < trainerOrder.length - 1) {
-        detailBlocks.push([]);
-      }
-    });
-
-    if (detailBlocks.length > 0) {
-      // Detailblöcke pro Trainer direkt unter die Übersicht im gleichen Sheet platzieren
-      XLSX.utils.sheet_add_aoa(overviewSheet, detailBlocks, { origin: -1 });
-    }
+    XLSX.utils.sheet_add_aoa(overviewSheet, signatureBlock, { origin: { r: nextRow, c: 0 } });
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
@@ -1041,30 +1054,6 @@ function exportToExcel() {
       (row) => `<tr>${row.map((cell) => `<td>${escapeCell(cell)}</td>`).join('')}</tr>`
     )
     .join('');
-
-  const detailsHeader = [
-    'Datum',
-    'Startzeit',
-    'Endzeit',
-    'DauerMinuten',
-    'DauerHHMM',
-    'Mannschaft',
-    'Typ',
-    'Notizen'
-  ];
-
-  const groupedByTrainer = filtered.reduce((acc, entry) => {
-    (acc[entry.trainerId] = acc[entry.trainerId] || []).push(entry);
-    return acc;
-  }, {});
-
-  const trainerOrder = Object.keys(groupedByTrainer)
-    .map((trainerId) => ({
-      trainerId,
-      trainerName: trainers.find((t) => t.id === trainerId)?.name || 'Unbekannt',
-      entries: groupedByTrainer[trainerId]
-    }))
-    .sort((a, b) => a.trainerName.localeCompare(b.trainerName));
 
   const detailsHtml = trainerOrder
     .map((trainerBlock) => {
@@ -1098,7 +1087,7 @@ function exportToExcel() {
     .join('');
 
   const signatureBlockHtml = `<br><table><tr><td>Datum:</td><td>${escapeCell(fallbackSignatureDate)}</td></tr><tr><td>__________________________</td><td></td><td>__________________________</td></tr><tr><td>Unterschrift Abteilungsleitung</td><td></td><td>Unterschrift Trainer / Übungsleiter</td></tr></table>`;
-  const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>table{border-collapse:collapse;}td,th{border:1px solid #ccc;padding:4px;} div{margin-top:8px;}</style></head><body><h3>Übersicht</h3><table>${overviewTable}</table>${signatureBlockHtml}<h3>Details</h3>${detailsHtml}</body></html>`;
+  const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>table{border-collapse:collapse;}td,th{border:1px solid #ccc;padding:4px;} div{margin-top:8px;}</style></head><body><h3>Details</h3>${detailsHtml}<br><h3>Übersicht</h3><table>${overviewTable}</table>${signatureBlockHtml}</body></html>`;
   const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
