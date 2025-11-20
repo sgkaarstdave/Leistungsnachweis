@@ -30,17 +30,6 @@
               <span>Datum</span>
               <input type="date" id="entry-date" required>
             </label>
-          <div class="time-row full-width">
-            <label>
-              <span>Startzeit</span>
-              <input type="time" id="startTime" name="startTime" class="time-input" required>
-            </label>
-            <label>
-              <span>Endzeit</span>
-              <input type="time" id="endTime" name="endTime" class="time-input" required>
-            </label>
-          </div>
-          <datalist id="time-options"></datalist>
           <label>
             <span>Trainer</span>
             <select id="entry-trainer" required></select>
@@ -55,9 +44,20 @@
               <option value="Training">Training</option>
               <option value="Spiel">Spiel</option>
               <option value="Turnier">Turnier</option>
-              <option value="Sonstiges">Sonstiges</option>
-            </select>
+            <option value="Sonstiges">Sonstiges</option>
+          </select>
           </label>
+          <div class="time-row full-width">
+            <label>
+              <span>Startzeit</span>
+              <input type="time" id="startTime" name="startTime" class="time-input" required>
+            </label>
+            <label>
+              <span>Endzeit</span>
+              <input type="time" id="endTime" name="endTime" class="time-input" required>
+            </label>
+          </div>
+          <datalist id="time-options"></datalist>
           <label class="full-width">
             <span>Notizen</span>
             <textarea id="entry-notes" rows="3" placeholder="Optional"></textarea>
