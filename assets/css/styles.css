@@ -406,7 +406,39 @@ table .empty {
   padding: 8px 10px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  flex-direction: column;
+}
+
+.team-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+}
+
+.team-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+
+.team-time-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.team-time-input {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .small-muted {
