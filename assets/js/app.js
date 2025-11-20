@@ -245,6 +245,8 @@ function resetEntryForm() {
   const form = document.getElementById('entry-form');
   form.reset();
   document.getElementById('entry-date').valueAsDate = new Date();
+  document.getElementById('startTime').value = '';
+  document.getElementById('endTime').value = '';
 }
 
 function validateEntryFields({ date, startTime, endTime, trainerId, teamId }, feedbackTarget) {
@@ -270,8 +272,8 @@ function validateEntryFields({ date, startTime, endTime, trainerId, teamId }, fe
 function handleEntrySubmit(event) {
   event.preventDefault();
   const date = document.getElementById('entry-date').value;
-  const startTime = document.getElementById('entry-start').value;
-  const endTime = document.getElementById('entry-end').value;
+  const startTime = document.getElementById('startTime').value;
+  const endTime = document.getElementById('endTime').value;
   const trainerId = document.getElementById('entry-trainer').value;
   const teamId = document.getElementById('entry-team').value;
   const type = document.getElementById('entry-type').value;
@@ -551,6 +553,7 @@ function openEditEntryModal(entryId) {
   startInput.type = 'time';
   startInput.step = '300';
   startInput.required = true;
+  startInput.className = 'time-input';
   startInput.value = entry.startTime;
   startLabel.appendChild(startInput);
   const endLabel = document.createElement('label');
@@ -559,6 +562,7 @@ function openEditEntryModal(entryId) {
   endInput.type = 'time';
   endInput.step = '300';
   endInput.required = true;
+  endInput.className = 'time-input';
   endInput.value = entry.endTime;
   endLabel.appendChild(endInput);
   timeRow.appendChild(startLabel);
