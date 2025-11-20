@@ -4,6 +4,9 @@ const STORAGE_KEYS = {
   entries: 'ln_entries'
 };
 
+// Einheitlicher Stundensatz für den Excel-Export
+const HOURLY_RATE = 12.5;
+
 function loadFromStorage(key, fallback = []) {
   const raw = localStorage.getItem(key);
   if (!raw) return fallback;
@@ -22,6 +25,7 @@ function saveToStorage(key, value) {
 function normalizeTrainers(list) {
   let changed = false;
   const normalized = list.map((trainer) => {
+    // teamIds wird beim Laden immer auf ein Array gesetzt, damit die Filterlogik stabil bleibt
     if (Array.isArray(trainer.teamIds)) {
       return trainer;
     }
@@ -181,7 +185,12 @@ function renderTrainerOptions(selectElements, includeAllOption = false) {
   });
 }
 
-function renderTeamOptions(selectElements, includeAllOption = false, trainerId = null) {
+function renderTeamOptions(
+  selectElements,
+  includeAllOption = false,
+  trainerId = null,
+  { preferredValue, placeholderTextWhenMissing } = {}
+) {
   const teams = trainerId ? getTeamsForTrainer(trainerId) : loadTeams();
   selectElements.forEach((select) => {
     const previousValue = select.value;
@@ -199,8 +208,17 @@ function renderTeamOptions(selectElements, includeAllOption = false, trainerId =
       select.appendChild(option);
     });
 
-    if (previousValue && Array.from(select.options).some((opt) => opt.value === previousValue)) {
-      select.value = previousValue;
+    const desiredValue = preferredValue ?? previousValue;
+    const hasDesiredValue = desiredValue && Array.from(select.options).some((opt) => opt.value === desiredValue);
+
+    if (hasDesiredValue) {
+      select.value = desiredValue;
+    } else if (placeholderTextWhenMissing) {
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = placeholderTextWhenMissing;
+      select.insertBefore(placeholder, select.firstChild);
+      select.value = '';
     } else if (!includeAllOption && select.options.length > 0) {
       select.value = select.options[0].value;
     }
@@ -218,7 +236,7 @@ function renderTrainerList() {
     li.appendChild(nameSpan);
     const editBtn = document.createElement('button');
     editBtn.className = 'ghost-btn';
-    editBtn.textContent = 'Bearbeiten';
+    editBtn.textContent = 'Zuordnen';
     editBtn.addEventListener('click', () => openTrainerTeamsModal(trainer.id));
     li.appendChild(editBtn);
     const button = document.createElement('button');
@@ -344,7 +362,17 @@ function handleEntrySubmit(event) {
 // Mannschaften nach Trainer filtern
 function updateEntryTeamOptions() {
   const trainerId = document.getElementById('entry-trainer').value;
-  renderTeamOptions([document.getElementById('entry-team')], false, trainerId);
+  const teamSelect = document.getElementById('entry-team');
+  renderTeamOptions(
+    [teamSelect],
+    false,
+    trainerId,
+    {
+      preferredValue: teamSelect.value,
+      // Wenn die aktuelle Auswahl nach der Traineränderung nicht mehr erlaubt ist, neutralisieren
+      placeholderTextWhenMissing: 'Bitte Mannschaft wählen'
+    }
+  );
 }
 
 function initForms() {
@@ -358,7 +386,6 @@ function initForms() {
 
   document.getElementById('entry-trainer').addEventListener('change', () => {
     updateEntryTeamOptions();
-    document.getElementById('entry-team').value = document.getElementById('entry-team').options[0]?.value || '';
   });
 
   document.getElementById('trainer-form').addEventListener('submit', (e) => {
@@ -555,9 +582,24 @@ function initFilters() {
   const now = new Date();
   monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
+  const filterTrainer = document.getElementById('filter-trainer');
+  const filterTeam = document.getElementById('filter-team');
+
+  const updateFilterTeams = () => {
+    // Mannschaften im Filter nach gewähltem Trainer einschränken
+    renderTeamOptions([filterTeam], true, filterTrainer.value, {
+      preferredValue: filterTeam.value
+    });
+  };
+
   monthInput.addEventListener('change', renderOverview);
-  document.getElementById('filter-trainer').addEventListener('change', renderOverview);
-  document.getElementById('filter-team').addEventListener('change', renderOverview);
+  filterTrainer.addEventListener('change', () => {
+    updateFilterTeams();
+    renderOverview();
+  });
+  filterTeam.addEventListener('change', renderOverview);
+
+  updateFilterTeams();
   document.getElementById('export-btn').addEventListener('click', exportToExcel);
 }
 
@@ -649,13 +691,27 @@ function openEditEntryModal(entryId) {
 
   renderTrainerOptions([trainerSelect], false);
   trainerSelect.value = entry.trainerId;
-  renderTeamOptions([teamSelect], false, trainerSelect.value);
-  teamSelect.value = entry.teamId;
+  renderTeamOptions(
+    [teamSelect],
+    false,
+    trainerSelect.value,
+    {
+      preferredValue: entry.teamId,
+      placeholderTextWhenMissing: 'Bitte Mannschaft wählen'
+    }
+  );
   typeSelect.value = entry.type;
 
   trainerSelect.addEventListener('change', () => {
-    renderTeamOptions([teamSelect], false, trainerSelect.value);
-    teamSelect.value = teamSelect.options[0]?.value || '';
+    renderTeamOptions(
+      [teamSelect],
+      false,
+      trainerSelect.value,
+      {
+        preferredValue: teamSelect.value,
+        placeholderTextWhenMissing: 'Bitte Mannschaft wählen'
+      }
+    );
   });
 
   const feedback = document.createElement('div');
@@ -756,24 +812,38 @@ function exportToExcel() {
     'GesamtStundenHHMM',
     'Monat',
     'Jahr',
-    'AnzahlEinsaetze'
+    'AnzahlEinsaetze',
+    'StundensatzEuro',
+    'BetragEuro'
   ];
 
   const overviewRows = Object.entries(trainerTotals)
     .map(([trainerId, data]) => {
       const trainerName = trainers.find((t) => t.id === trainerId)?.name || 'Unbekannt';
-      const hoursDecimal = (data.minutes / 60).toFixed(2);
-      return [
+      const hoursDecimal = Number((data.minutes / 60).toFixed(2));
+      return {
         trainerName,
-        data.minutes,
+        minutes: data.minutes,
         hoursDecimal,
-        formatDuration(data.minutes),
-        String(month).padStart(2, '0'),
+        hoursFormatted: formatDuration(data.minutes),
+        month: String(month).padStart(2, '0'),
         year,
-        data.count
-      ];
+        count: data.count
+      };
     })
-    .sort((a, b) => a[0].localeCompare(b[0]));
+    .sort((a, b) => a.trainerName.localeCompare(b.trainerName));
+
+  const overviewRowValues = overviewRows.map((row) => [
+    row.trainerName,
+    row.minutes,
+    row.hoursDecimal,
+    row.hoursFormatted,
+    row.month,
+    row.year,
+    row.count,
+    HOURLY_RATE,
+    Number((row.hoursDecimal * HOURLY_RATE).toFixed(2))
+  ]);
 
   const detailsHeader = [
     'Datum',
@@ -808,7 +878,27 @@ function exportToExcel() {
   const monthPart = String(month).padStart(2, '0');
 
   if (typeof XLSX !== 'undefined') {
-    const overviewSheet = XLSX.utils.aoa_to_sheet([overviewHeader, ...overviewRows]);
+    const overviewSheet = XLSX.utils.aoa_to_sheet([overviewHeader, ...overviewRowValues]);
+
+    overviewRowValues.forEach((_, index) => {
+      // Neue Spalten für Stundensatz & Betrag mit Excel-Formel befüllen
+      const excelRow = index + 2; // +1 wegen Header, +1 weil 1-basiert
+      const hoursCell = XLSX.utils.encode_cell({ r: excelRow - 1, c: 2 });
+      const rateCell = XLSX.utils.encode_cell({ r: excelRow - 1, c: 7 });
+      const amountCell = XLSX.utils.encode_cell({ r: excelRow - 1, c: 8 });
+      overviewSheet[rateCell] = { v: HOURLY_RATE, t: 'n', z: '0.00' };
+      overviewSheet[amountCell] = { f: `${hoursCell}*${HOURLY_RATE}`, t: 'n', z: '0.00' };
+    });
+
+    const today = new Date().toLocaleDateString('de-DE');
+    const signatureBlock = [
+      [],
+      ['Datum:', today],
+      ['__________________________', '', '__________________________'],
+      ['Unterschrift Abteilungsleitung', '', 'Unterschrift Trainer / Übungsleiter']
+    ];
+    XLSX.utils.sheet_add_aoa(overviewSheet, signatureBlock, { origin: -1 });
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
 
@@ -823,7 +913,8 @@ function exportToExcel() {
 
   // Fallback ohne externe Bibliothek: HTML-Tabelle als Excel-kompatible Datei
   const escapeCell = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const overviewTable = [overviewHeader, ...overviewRows]
+  const fallbackSignatureDate = new Date().toLocaleDateString('de-DE');
+  const overviewTable = [overviewHeader, ...overviewRowValues]
     .map(
       (row) => `<tr>${row.map((cell) => `<td>${escapeCell(cell)}</td>`).join('')}</tr>`
     )
@@ -834,7 +925,8 @@ function exportToExcel() {
     )
     .join('');
 
-  const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>table{border-collapse:collapse;}td,th{border:1px solid #ccc;padding:4px;}</style></head><body><h3>Übersicht</h3><table>${overviewTable}</table><h3>Details</h3><table>${detailsTable}</table></body></html>`;
+  const signatureBlockHtml = `<br><table><tr><td>Datum:</td><td>${escapeCell(fallbackSignatureDate)}</td></tr><tr><td>__________________________</td><td></td><td>__________________________</td></tr><tr><td>Unterschrift Abteilungsleitung</td><td></td><td>Unterschrift Trainer / Übungsleiter</td></tr></table>`;
+  const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>table{border-collapse:collapse;}td,th{border:1px solid #ccc;padding:4px;}</style></head><body><h3>Übersicht</h3><table>${overviewTable}</table>${signatureBlockHtml}<h3>Details</h3><table>${detailsTable}</table></body></html>`;
   const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -880,7 +972,6 @@ function initApp() {
     document.getElementById('filter-trainer')
   ], true);
   updateEntryTeamOptions();
-  document.getElementById('entry-team').value = document.getElementById('entry-team').options[0]?.value || '';
   renderTeamOptions([
     document.getElementById('filter-team')
   ], true);
