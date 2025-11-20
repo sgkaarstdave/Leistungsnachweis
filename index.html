@@ -24,20 +24,22 @@
   <main class="container">
     <section id="capture-section" class="section active">
       <div class="card">
-        <h2>Neuen Eintrag erfassen</h2>
-        <form id="entry-form" class="form-grid">
-          <label>
-            <span>Datum</span>
-            <input type="date" id="entry-date" required>
-          </label>
-          <label>
-            <span>Startzeit</span>
-            <input type="time" id="entry-start" required>
-          </label>
-          <label>
-            <span>Endzeit</span>
-            <input type="time" id="entry-end" required>
-          </label>
+          <h2>Neuen Eintrag erfassen</h2>
+          <form id="entry-form" class="form-grid">
+            <label>
+              <span>Datum</span>
+              <input type="date" id="entry-date" required>
+            </label>
+          <div class="time-row full-width">
+            <label>
+              <span>Startzeit</span>
+              <input type="time" id="entry-start" required step="300">
+            </label>
+            <label>
+              <span>Endzeit</span>
+              <input type="time" id="entry-end" required step="300">
+            </label>
+          </div>
           <label>
             <span>Trainer</span>
             <select id="entry-trainer" required></select>
@@ -101,10 +103,11 @@
                 <th>Mannschaft</th>
                 <th>Typ</th>
                 <th>Notizen</th>
+                <th>Aktionen</th>
               </tr>
             </thead>
             <tbody id="entries-body">
-              <tr><td colspan="9" class="empty">Keine Einträge für diesen Zeitraum.</td></tr>
+              <tr><td colspan="10" class="empty">Keine Einträge für diesen Zeitraum.</td></tr>
             </tbody>
           </table>
         </div>
@@ -141,5 +144,15 @@
   </main>
 
   <script src="assets/js/app.js"></script>
+
+  <div id="modal-backdrop" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title"></h3>
+        <button id="modal-close" class="icon-btn" aria-label="Modal schließen">✕</button>
+      </div>
+      <div id="modal-content"></div>
+    </div>
+  </div>
 </body>
 </html>
