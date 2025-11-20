@@ -84,14 +84,8 @@ function formatDuration(minutes) {
   return `${hours}:${mins.toString().padStart(2, '0')}`;
 }
 
-// Hilfsfunktion: 30-Minuten-Slots erzwingen
-function alignToThirtyMinutes(totalMinutes) {
-  const remainder = totalMinutes % 30;
-  return remainder === 0 ? totalMinutes : totalMinutes + (30 - remainder);
-}
-
 function minutesToTimeString(totalMinutes) {
-  const clamped = Math.min(totalMinutes, 23 * 60 + 30);
+  const clamped = Math.max(0, Math.min(totalMinutes, 23 * 60 + 59));
   const hours = Math.floor(clamped / 60) % 24;
   const minutes = clamped % 60;
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
@@ -104,11 +98,30 @@ function parseTimeToMinutes(timeStr) {
 
 // Automatische Endzeit (+2 Stunden) setzen, wenn Startzeit gewählt wird
 function attachAutoEndTime(startInput, endInput) {
-  startInput.addEventListener('change', () => {
+  const updateEndTime = () => {
     if (!startInput.value) return;
     const startMinutes = parseTimeToMinutes(startInput.value);
-    const proposed = alignToThirtyMinutes(startMinutes + 120);
+    const proposed = startMinutes + 120;
     endInput.value = minutesToTimeString(proposed);
+  };
+
+  ['change', 'blur'].forEach((eventName) => {
+    startInput.addEventListener(eventName, updateEndTime);
+  });
+}
+
+function attachTimeSuggestions(inputs, intervalMinutes = 15) {
+  const datalist = document.getElementById('time-options');
+  if (datalist && datalist.children.length === 0) {
+    for (let minutes = 0; minutes < 24 * 60; minutes += intervalMinutes) {
+      const option = document.createElement('option');
+      option.value = minutesToTimeString(minutes);
+      datalist.appendChild(option);
+    }
+  }
+
+  inputs.forEach((input) => {
+    input.setAttribute('list', 'time-options');
   });
 }
 
@@ -341,6 +354,7 @@ function initForms() {
   const startInput = document.getElementById('startTime');
   const endInput = document.getElementById('endTime');
   attachAutoEndTime(startInput, endInput);
+  attachTimeSuggestions([startInput, endInput]);
 
   document.getElementById('entry-trainer').addEventListener('change', () => {
     updateEntryTeamOptions();
@@ -595,6 +609,7 @@ function openEditEntryModal(entryId) {
   timeRow.appendChild(endLabel);
   form.appendChild(timeRow);
   attachAutoEndTime(startInput, endInput);
+  attachTimeSuggestions([startInput, endInput]);
 
   const trainerLabel = document.createElement('label');
   trainerLabel.innerHTML = '<span>Trainer</span>';
@@ -701,11 +716,6 @@ function openEditEntryModal(entryId) {
 
 // Excel-Export: Trainer-Summen pro Monat erzeugen
 function exportToExcel() {
-  if (typeof XLSX === 'undefined') {
-    alert('Excel-Export nicht verfügbar. Bitte Seite neu laden.');
-    return;
-  }
-
   const monthInput = document.getElementById('overview-month');
   const [yearValue, monthValue] = monthInput.value
     ? monthInput.value.split('-')
@@ -765,10 +775,6 @@ function exportToExcel() {
     })
     .sort((a, b) => a[0].localeCompare(b[0]));
 
-  const overviewSheet = XLSX.utils.aoa_to_sheet([overviewHeader, ...overviewRows]);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
-
   const detailsHeader = [
     'Datum',
     'Startzeit',
@@ -799,13 +805,43 @@ function exportToExcel() {
       ];
     });
 
-  if (detailsRows.length > 0) {
-    const detailsSheet = XLSX.utils.aoa_to_sheet([detailsHeader, ...detailsRows]);
-    XLSX.utils.book_append_sheet(workbook, detailsSheet, 'Details');
+  const monthPart = String(month).padStart(2, '0');
+
+  if (typeof XLSX !== 'undefined') {
+    const overviewSheet = XLSX.utils.aoa_to_sheet([overviewHeader, ...overviewRows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
+
+    if (detailsRows.length > 0) {
+      const detailsSheet = XLSX.utils.aoa_to_sheet([detailsHeader, ...detailsRows]);
+      XLSX.utils.book_append_sheet(workbook, detailsSheet, 'Details');
+    }
+
+    XLSX.writeFile(workbook, `leistungsnachweis_${year}-${monthPart}.xlsx`);
+    return;
   }
 
-  const monthPart = String(month).padStart(2, '0');
-  XLSX.writeFile(workbook, `leistungsnachweis_${year}-${monthPart}.xlsx`);
+  // Fallback ohne externe Bibliothek: HTML-Tabelle als Excel-kompatible Datei
+  const escapeCell = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const overviewTable = [overviewHeader, ...overviewRows]
+    .map(
+      (row) => `<tr>${row.map((cell) => `<td>${escapeCell(cell)}</td>`).join('')}</tr>`
+    )
+    .join('');
+  const detailsTable = [detailsHeader, ...detailsRows]
+    .map(
+      (row) => `<tr>${row.map((cell) => `<td>${escapeCell(cell)}</td>`).join('')}</tr>`
+    )
+    .join('');
+
+  const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>table{border-collapse:collapse;}td,th{border:1px solid #ccc;padding:4px;}</style></head><body><h3>Übersicht</h3><table>${overviewTable}</table><h3>Details</h3><table>${detailsTable}</table></body></html>`;
+  const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `leistungsnachweis_${year}-${monthPart}.xls`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function openModal(title, contentNode) {
