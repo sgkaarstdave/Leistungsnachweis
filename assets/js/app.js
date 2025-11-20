@@ -48,11 +48,38 @@ function saveTrainers(list) {
 }
 
 function loadTeams() {
-  return loadFromStorage(STORAGE_KEYS.teams);
+  return normalizeTeams(loadFromStorage(STORAGE_KEYS.teams));
 }
 
 function saveTeams(list) {
   saveToStorage(STORAGE_KEYS.teams, list);
+}
+
+function normalizeTeams(list) {
+  let changed = false;
+  const normalized = list.map((team) => {
+    // Standardzeiten sicherstellen, damit ältere Datensätze migriert werden
+    const withDefaults = {
+      ...team,
+      defaultStartTime: Object.prototype.hasOwnProperty.call(team, 'defaultStartTime')
+        ? team.defaultStartTime
+        : null,
+      defaultEndTime: Object.prototype.hasOwnProperty.call(team, 'defaultEndTime')
+        ? team.defaultEndTime
+        : null
+    };
+
+    if (withDefaults.defaultStartTime !== team.defaultStartTime || withDefaults.defaultEndTime !== team.defaultEndTime) {
+      changed = true;
+    }
+    return withDefaults;
+  });
+
+  if (changed) {
+    saveTeams(normalized);
+  }
+
+  return normalized;
 }
 
 function loadEntries() {
@@ -77,7 +104,7 @@ function ensureSeedData() {
   }
 
   if (teams.length === 0) {
-    teams.push({ id: uuid(), name: 'Demo-Team' });
+    teams.push({ id: uuid(), name: 'Demo-Team', defaultStartTime: null, defaultEndTime: null });
     saveTeams(teams);
   }
 }
@@ -255,13 +282,48 @@ function renderTeamList() {
   teamList.innerHTML = '';
   teams.forEach((team) => {
     const li = document.createElement('li');
-    li.textContent = team.name;
-    const button = document.createElement('button');
-    button.className = 'icon-btn';
-    button.textContent = '✕';
-    button.title = 'Mannschaft löschen';
-    button.addEventListener('click', () => deleteTeam(team.id));
-    li.appendChild(button);
+
+    const title = document.createElement('div');
+    title.className = 'team-row';
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = team.name;
+    title.appendChild(nameSpan);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'icon-btn';
+    deleteBtn.textContent = '✕';
+    deleteBtn.title = 'Mannschaft löschen';
+    deleteBtn.addEventListener('click', () => deleteTeam(team.id));
+    title.appendChild(deleteBtn);
+    li.appendChild(title);
+
+    const timeContainer = document.createElement('div');
+    timeContainer.className = 'team-times';
+
+    const startLabel = document.createElement('label');
+    startLabel.innerHTML = '<span>Standard Start</span>';
+    startLabel.classList.add('team-time-label');
+    const startInput = document.createElement('input');
+    startInput.type = 'time';
+    startInput.className = 'team-time-input';
+    startInput.value = team.defaultStartTime || '';
+    startInput.addEventListener('change', () => updateTeamDefaultTime(team.id, 'defaultStartTime', startInput.value));
+    startLabel.appendChild(startInput);
+
+    const endLabel = document.createElement('label');
+    endLabel.innerHTML = '<span>Standard Ende</span>';
+    endLabel.classList.add('team-time-label');
+    const endInput = document.createElement('input');
+    endInput.type = 'time';
+    endInput.className = 'team-time-input';
+    endInput.value = team.defaultEndTime || '';
+    endInput.addEventListener('change', () => updateTeamDefaultTime(team.id, 'defaultEndTime', endInput.value));
+    endLabel.appendChild(endInput);
+
+    timeContainer.appendChild(startLabel);
+    timeContainer.appendChild(endLabel);
+    li.appendChild(timeContainer);
+
     teamList.appendChild(li);
   });
 }
@@ -293,6 +355,19 @@ function deleteTeam(teamId) {
   updateEntryTeamOptions();
   renderTeamOptions([document.getElementById('filter-team')], true);
   renderOverview();
+}
+
+function updateTeamDefaultTime(teamId, field, value) {
+  const teams = loadTeams();
+  const updated = teams.map((team) =>
+    team.id === teamId
+      ? { ...team, [field]: value || null }
+      : team
+  );
+  // Standardzeiten werden im Team gespeichert
+  saveTeams(updated);
+  renderTeamList();
+  updateEntryTeamOptions();
 }
 
 function resetEntryForm() {
@@ -360,7 +435,8 @@ function handleEntrySubmit(event) {
 }
 
 // Mannschaften nach Trainer filtern
-function updateEntryTeamOptions() {
+function updateEntryTeamOptions(options = {}) {
+  const { startInput, endInput } = options;
   const trainerId = document.getElementById('entry-trainer').value;
   const teamSelect = document.getElementById('entry-team');
   renderTeamOptions(
@@ -373,6 +449,19 @@ function updateEntryTeamOptions() {
       placeholderTextWhenMissing: 'Bitte Mannschaft wählen'
     }
   );
+
+  if (startInput && endInput) {
+    applySelectedTeamDefaults(teamSelect.value, startInput, endInput);
+  }
+}
+
+function applySelectedTeamDefaults(teamId, startInput, endInput) {
+  const team = getTeamById(teamId);
+  if (team && team.defaultStartTime && team.defaultEndTime) {
+    // Standardzeiten beim Mannschaftswechsel vorbefüllen
+    startInput.value = team.defaultStartTime;
+    endInput.value = team.defaultEndTime;
+  }
 }
 
 function initForms() {
@@ -381,12 +470,15 @@ function initForms() {
   document.getElementById('entry-form').addEventListener('submit', handleEntrySubmit);
   const startInput = document.getElementById('startTime');
   const endInput = document.getElementById('endTime');
+  const teamSelect = document.getElementById('entry-team');
   attachAutoEndTime(startInput, endInput);
   attachTimeSuggestions([startInput, endInput]);
 
   document.getElementById('entry-trainer').addEventListener('change', () => {
-    updateEntryTeamOptions();
+    updateEntryTeamOptions({ startInput, endInput });
   });
+
+  teamSelect.addEventListener('change', () => applySelectedTeamDefaults(teamSelect.value, startInput, endInput));
 
   document.getElementById('trainer-form').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -413,7 +505,7 @@ function initForms() {
     const name = input.value.trim();
     if (!name) return;
     const teams = loadTeams();
-    teams.push({ id: uuid(), name });
+    teams.push({ id: uuid(), name, defaultStartTime: null, defaultEndTime: null });
     saveTeams(teams);
     input.value = '';
     renderTeamList();
@@ -702,6 +794,8 @@ function openEditEntryModal(entryId) {
   );
   typeSelect.value = entry.type;
 
+  teamSelect.addEventListener('change', () => applySelectedTeamDefaults(teamSelect.value, startInput, endInput));
+
   trainerSelect.addEventListener('change', () => {
     renderTeamOptions(
       [teamSelect],
@@ -712,6 +806,8 @@ function openEditEntryModal(entryId) {
         placeholderTextWhenMissing: 'Bitte Mannschaft wählen'
       }
     );
+
+    applySelectedTeamDefaults(teamSelect.value, startInput, endInput);
   });
 
   const feedback = document.createElement('div');
@@ -845,36 +941,6 @@ function exportToExcel() {
     Number((row.hoursDecimal * HOURLY_RATE).toFixed(2))
   ]);
 
-  const detailsHeader = [
-    'Datum',
-    'Startzeit',
-    'Endzeit',
-    'DauerMinuten',
-    'DauerHHMM',
-    'Trainer',
-    'Mannschaft',
-    'Typ',
-    'Notizen'
-  ];
-  const detailsRows = filtered
-    .slice()
-    .sort((a, b) => new Date(a.date) - new Date(b.date) || parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime))
-    .map((entry) => {
-      const trainerName = trainers.find((t) => t.id === entry.trainerId)?.name || 'Unbekannt';
-      const teamName = teams.find((t) => t.id === entry.teamId)?.name || 'Unbekannt';
-      return [
-        entry.date,
-        entry.startTime,
-        entry.endTime,
-        entry.durationMinutes,
-        formatDuration(entry.durationMinutes),
-        trainerName,
-        teamName,
-        entry.type,
-        entry.notes || ''
-      ];
-    });
-
   const monthPart = String(month).padStart(2, '0');
 
   if (typeof XLSX !== 'undefined') {
@@ -899,13 +965,69 @@ function exportToExcel() {
     ];
     XLSX.utils.sheet_add_aoa(overviewSheet, signatureBlock, { origin: -1 });
 
+    const detailsHeader = [
+      'Datum',
+      'Startzeit',
+      'Endzeit',
+      'DauerMinuten',
+      'DauerHHMM',
+      'Mannschaft',
+      'Typ',
+      'Notizen'
+    ];
+
+    const groupedByTrainer = filtered.reduce((acc, entry) => {
+      (acc[entry.trainerId] = acc[entry.trainerId] || []).push(entry);
+      return acc;
+    }, {});
+
+    const trainerOrder = Object.keys(groupedByTrainer)
+      .map((trainerId) => ({
+        trainerId,
+        trainerName: trainers.find((t) => t.id === trainerId)?.name || 'Unbekannt',
+        entries: groupedByTrainer[trainerId]
+      }))
+      .sort((a, b) => a.trainerName.localeCompare(b.trainerName));
+
+    const detailBlocks = [[], ['Details']];
+
+    trainerOrder.forEach((trainerBlock, index) => {
+      detailBlocks.push([]);
+      detailBlocks.push([`Trainer: ${trainerBlock.trainerName}`, `Monat: ${monthPart}/${year}`]);
+      detailBlocks.push(detailsHeader);
+
+      trainerBlock.entries
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.date) - new Date(b.date) || parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)
+        )
+        .forEach((entry) => {
+          const teamName = teams.find((t) => t.id === entry.teamId)?.name || 'Unbekannt';
+          detailBlocks.push([
+            entry.date,
+            entry.startTime,
+            entry.endTime,
+            entry.durationMinutes,
+            formatDuration(entry.durationMinutes),
+            teamName,
+            entry.type,
+            entry.notes || ''
+          ]);
+        });
+
+      if (index < trainerOrder.length - 1) {
+        detailBlocks.push([]);
+      }
+    });
+
+    if (detailBlocks.length > 0) {
+      // Detailblöcke pro Trainer direkt unter die Übersicht im gleichen Sheet platzieren
+      XLSX.utils.sheet_add_aoa(overviewSheet, detailBlocks, { origin: -1 });
+    }
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
-
-    if (detailsRows.length > 0) {
-      const detailsSheet = XLSX.utils.aoa_to_sheet([detailsHeader, ...detailsRows]);
-      XLSX.utils.book_append_sheet(workbook, detailsSheet, 'Details');
-    }
 
     XLSX.writeFile(workbook, `leistungsnachweis_${year}-${monthPart}.xlsx`);
     return;
@@ -919,14 +1041,64 @@ function exportToExcel() {
       (row) => `<tr>${row.map((cell) => `<td>${escapeCell(cell)}</td>`).join('')}</tr>`
     )
     .join('');
-  const detailsTable = [detailsHeader, ...detailsRows]
-    .map(
-      (row) => `<tr>${row.map((cell) => `<td>${escapeCell(cell)}</td>`).join('')}</tr>`
-    )
+
+  const detailsHeader = [
+    'Datum',
+    'Startzeit',
+    'Endzeit',
+    'DauerMinuten',
+    'DauerHHMM',
+    'Mannschaft',
+    'Typ',
+    'Notizen'
+  ];
+
+  const groupedByTrainer = filtered.reduce((acc, entry) => {
+    (acc[entry.trainerId] = acc[entry.trainerId] || []).push(entry);
+    return acc;
+  }, {});
+
+  const trainerOrder = Object.keys(groupedByTrainer)
+    .map((trainerId) => ({
+      trainerId,
+      trainerName: trainers.find((t) => t.id === trainerId)?.name || 'Unbekannt',
+      entries: groupedByTrainer[trainerId]
+    }))
+    .sort((a, b) => a.trainerName.localeCompare(b.trainerName));
+
+  const detailsHtml = trainerOrder
+    .map((trainerBlock) => {
+      const rows = trainerBlock.entries
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.date) - new Date(b.date) || parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)
+        )
+        .map((entry) => {
+          const teamName = teams.find((t) => t.id === entry.teamId)?.name || 'Unbekannt';
+          const cells = [
+            entry.date,
+            entry.startTime,
+            entry.endTime,
+            entry.durationMinutes,
+            formatDuration(entry.durationMinutes),
+            teamName,
+            entry.type,
+            entry.notes || ''
+          ];
+          return `<tr>${cells.map((cell) => `<td>${escapeCell(cell)}</td>`).join('')}</tr>`;
+        })
+        .join('');
+
+      const headerRow = `<tr>${detailsHeader.map((cell) => `<th>${escapeCell(cell)}</th>`).join('')}</tr>`;
+      return `<div style="margin-top:12px;"><strong>Trainer: ${escapeCell(
+        trainerBlock.trainerName
+      )} (Monat: ${escapeCell(monthPart)}/${escapeCell(String(year))})</strong><table>${headerRow}${rows}</table></div>`;
+    })
     .join('');
 
   const signatureBlockHtml = `<br><table><tr><td>Datum:</td><td>${escapeCell(fallbackSignatureDate)}</td></tr><tr><td>__________________________</td><td></td><td>__________________________</td></tr><tr><td>Unterschrift Abteilungsleitung</td><td></td><td>Unterschrift Trainer / Übungsleiter</td></tr></table>`;
-  const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>table{border-collapse:collapse;}td,th{border:1px solid #ccc;padding:4px;}</style></head><body><h3>Übersicht</h3><table>${overviewTable}</table>${signatureBlockHtml}<h3>Details</h3><table>${detailsTable}</table></body></html>`;
+  const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>table{border-collapse:collapse;}td,th{border:1px solid #ccc;padding:4px;} div{margin-top:8px;}</style></head><body><h3>Übersicht</h3><table>${overviewTable}</table>${signatureBlockHtml}<h3>Details</h3>${detailsHtml}</body></html>`;
   const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -971,7 +1143,10 @@ function initApp() {
   renderTrainerOptions([
     document.getElementById('filter-trainer')
   ], true);
-  updateEntryTeamOptions();
+  updateEntryTeamOptions({
+    startInput: document.getElementById('startTime'),
+    endInput: document.getElementById('endTime')
+  });
   renderTeamOptions([
     document.getElementById('filter-team')
   ], true);
