@@ -33,11 +33,11 @@
           <div class="time-row full-width">
             <label>
               <span>Startzeit</span>
-              <input type="time" id="startTime" name="startTime" class="time-input" required step="300">
+              <input type="time" id="startTime" name="startTime" class="time-input" required step="1800">
             </label>
             <label>
               <span>Endzeit</span>
-              <input type="time" id="endTime" name="endTime" class="time-input" required step="300">
+              <input type="time" id="endTime" name="endTime" class="time-input" required step="1800">
             </label>
           </div>
           <label>
@@ -86,7 +86,7 @@
               <span>Mannschaft</span>
               <select id="filter-team"></select>
             </label>
-            <button id="export-btn" class="secondary">Export als Datei</button>
+            <button id="export-btn" class="secondary">Excel-Export</button>
           </div>
         </div>
 
@@ -144,6 +144,7 @@
   </main>
 
   <script src="assets/js/app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
 
   <div id="modal-backdrop" class="modal-backdrop hidden">
     <div class="modal">

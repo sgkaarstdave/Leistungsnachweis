@@ -84,9 +84,32 @@ function formatDuration(minutes) {
   return `${hours}:${mins.toString().padStart(2, '0')}`;
 }
 
+// Hilfsfunktion: 30-Minuten-Slots erzwingen
+function alignToThirtyMinutes(totalMinutes) {
+  const remainder = totalMinutes % 30;
+  return remainder === 0 ? totalMinutes : totalMinutes + (30 - remainder);
+}
+
+function minutesToTimeString(totalMinutes) {
+  const clamped = Math.min(totalMinutes, 23 * 60 + 30);
+  const hours = Math.floor(clamped / 60) % 24;
+  const minutes = clamped % 60;
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+}
+
 function parseTimeToMinutes(timeStr) {
   const [hours, minutes] = timeStr.split(':').map(Number);
   return hours * 60 + minutes;
+}
+
+// Automatische Endzeit (+2 Stunden) setzen, wenn Startzeit gewählt wird
+function attachAutoEndTime(startInput, endInput) {
+  startInput.addEventListener('change', () => {
+    if (!startInput.value) return;
+    const startMinutes = parseTimeToMinutes(startInput.value);
+    const proposed = alignToThirtyMinutes(startMinutes + 120);
+    endInput.value = minutesToTimeString(proposed);
+  });
 }
 
 function getTrainerById(id) {
@@ -315,6 +338,9 @@ function initForms() {
   const entryDate = document.getElementById('entry-date');
   entryDate.valueAsDate = new Date();
   document.getElementById('entry-form').addEventListener('submit', handleEntrySubmit);
+  const startInput = document.getElementById('startTime');
+  const endInput = document.getElementById('endTime');
+  attachAutoEndTime(startInput, endInput);
 
   document.getElementById('entry-trainer').addEventListener('change', () => {
     updateEntryTeamOptions();
@@ -518,7 +544,7 @@ function initFilters() {
   monthInput.addEventListener('change', renderOverview);
   document.getElementById('filter-trainer').addEventListener('change', renderOverview);
   document.getElementById('filter-team').addEventListener('change', renderOverview);
-  document.getElementById('export-btn').addEventListener('click', exportCsv);
+  document.getElementById('export-btn').addEventListener('click', exportToExcel);
 }
 
 // Bearbeiten-/Löschen-Flow in der Übersicht
@@ -551,7 +577,7 @@ function openEditEntryModal(entryId) {
   startLabel.innerHTML = '<span>Startzeit</span>';
   const startInput = document.createElement('input');
   startInput.type = 'time';
-  startInput.step = '300';
+  startInput.step = '1800';
   startInput.required = true;
   startInput.className = 'time-input';
   startInput.value = entry.startTime;
@@ -560,7 +586,7 @@ function openEditEntryModal(entryId) {
   endLabel.innerHTML = '<span>Endzeit</span>';
   const endInput = document.createElement('input');
   endInput.type = 'time';
-  endInput.step = '300';
+  endInput.step = '1800';
   endInput.required = true;
   endInput.className = 'time-input';
   endInput.value = entry.endTime;
@@ -568,6 +594,7 @@ function openEditEntryModal(entryId) {
   timeRow.appendChild(startLabel);
   timeRow.appendChild(endLabel);
   form.appendChild(timeRow);
+  attachAutoEndTime(startInput, endInput);
 
   const trainerLabel = document.createElement('label');
   trainerLabel.innerHTML = '<span>Trainer</span>';
@@ -672,55 +699,113 @@ function openEditEntryModal(entryId) {
   openModal('Eintrag bearbeiten', form);
 }
 
-function exportCsv() {
-  const entriesTable = document.getElementById('entries-body');
-  if (!entriesTable.children.length || entriesTable.querySelector('.empty')) {
-    alert('Keine Einträge zum Exportieren.');
+// Excel-Export: Trainer-Summen pro Monat erzeugen
+function exportToExcel() {
+  if (typeof XLSX === 'undefined') {
+    alert('Excel-Export nicht verfügbar. Bitte Seite neu laden.');
     return;
   }
 
   const monthInput = document.getElementById('overview-month');
-  const [year, month] = monthInput.value.split('-');
-  const trainerFilter = document.getElementById('filter-trainer');
-  const teamFilter = document.getElementById('filter-team');
+  const [yearValue, monthValue] = monthInput.value
+    ? monthInput.value.split('-')
+    : [String(new Date().getFullYear()), String(new Date().getMonth() + 1).padStart(2, '0')];
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const teamFilter = document.getElementById('filter-team').value;
 
   const entries = loadEntries();
   const trainers = loadTrainers();
   const teams = loadTeams();
 
-  const filtered = entries.filter((entry) => {
+  const monthEntries = entries.filter((entry) => {
     const entryDate = new Date(entry.date);
-    const matchesMonth = entryDate.getFullYear() === Number(year) && entryDate.getMonth() + 1 === Number(month);
-    const matchesTrainer = trainerFilter.value === 'all' || entry.trainerId === trainerFilter.value;
-    const matchesTeam = teamFilter.value === 'all' || entry.teamId === teamFilter.value;
-    return matchesMonth && matchesTrainer && matchesTeam;
+    return entryDate.getFullYear() === year && entryDate.getMonth() + 1 === month;
   });
 
-  const header = ['Datum', 'Startzeit', 'Endzeit', 'Dauer', 'Trainer', 'Mannschaft', 'Typ', 'Notizen'];
-  const rows = filtered.map((entry) => {
-    const trainerName = trainers.find((t) => t.id === entry.trainerId)?.name || '';
-    const teamName = teams.find((t) => t.id === entry.teamId)?.name || '';
-    const escapedNotes = (entry.notes || '').replace(/"/g, '""');
-    return [
-      entry.date,
-      entry.startTime,
-      entry.endTime,
-      formatDuration(entry.durationMinutes),
-      trainerName,
-      teamName,
-      entry.type,
-      `"${escapedNotes}"`
-    ].join(',');
-  });
+  const filtered = monthEntries.filter((entry) => teamFilter === 'all' || entry.teamId === teamFilter);
 
-  const csvContent = [header.join(','), ...rows].join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
+  if (filtered.length === 0) {
+    alert('Keine Einträge zum Exportieren.');
+    return;
+  }
+
+  const trainerTotals = filtered.reduce((acc, entry) => {
+    if (!acc[entry.trainerId]) {
+      acc[entry.trainerId] = { minutes: 0, count: 0 };
+    }
+    acc[entry.trainerId].minutes += entry.durationMinutes;
+    acc[entry.trainerId].count += 1;
+    return acc;
+  }, {});
+
+  const overviewHeader = [
+    'TrainerName',
+    'GesamtMinuten',
+    'GesamtStundenDezimal',
+    'GesamtStundenHHMM',
+    'Monat',
+    'Jahr',
+    'AnzahlEinsaetze'
+  ];
+
+  const overviewRows = Object.entries(trainerTotals)
+    .map(([trainerId, data]) => {
+      const trainerName = trainers.find((t) => t.id === trainerId)?.name || 'Unbekannt';
+      const hoursDecimal = (data.minutes / 60).toFixed(2);
+      return [
+        trainerName,
+        data.minutes,
+        hoursDecimal,
+        formatDuration(data.minutes),
+        String(month).padStart(2, '0'),
+        year,
+        data.count
+      ];
+    })
+    .sort((a, b) => a[0].localeCompare(b[0]));
+
+  const overviewSheet = XLSX.utils.aoa_to_sheet([overviewHeader, ...overviewRows]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
+
+  const detailsHeader = [
+    'Datum',
+    'Startzeit',
+    'Endzeit',
+    'DauerMinuten',
+    'DauerHHMM',
+    'Trainer',
+    'Mannschaft',
+    'Typ',
+    'Notizen'
+  ];
+  const detailsRows = filtered
+    .slice()
+    .sort((a, b) => new Date(a.date) - new Date(b.date) || parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime))
+    .map((entry) => {
+      const trainerName = trainers.find((t) => t.id === entry.trainerId)?.name || 'Unbekannt';
+      const teamName = teams.find((t) => t.id === entry.teamId)?.name || 'Unbekannt';
+      return [
+        entry.date,
+        entry.startTime,
+        entry.endTime,
+        entry.durationMinutes,
+        formatDuration(entry.durationMinutes),
+        trainerName,
+        teamName,
+        entry.type,
+        entry.notes || ''
+      ];
+    });
+
+  if (detailsRows.length > 0) {
+    const detailsSheet = XLSX.utils.aoa_to_sheet([detailsHeader, ...detailsRows]);
+    XLSX.utils.book_append_sheet(workbook, detailsSheet, 'Details');
+  }
+
   const monthPart = String(month).padStart(2, '0');
-  link.download = `leistungsnachweis_${year}-${monthPart}.csv`;
-  link.href = URL.createObjectURL(blob);
-  link.click();
-  URL.revokeObjectURL(link.href);
+  XLSX.writeFile(workbook, `leistungsnachweis_${year}-${monthPart}.xlsx`);
 }
 
 function openModal(title, contentNode) {
