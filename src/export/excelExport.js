@@ -46,6 +46,31 @@ export async function exportToExcel({ supabase, filters }) {
       });
     });
 
+    const { totalMinutes, totalHours, totalCost } = calculateTotals(trainerEntries);
+
+    sheet.addRow([]);
+
+    // Summenzeilen für Gesamtstunden und Gesamtkosten
+    const hoursRow = sheet.addRow(['Gesamtdauer (Stunden):', totalHours]);
+    hoursRow.getCell(1).font = { bold: true };
+    hoursRow.getCell(2).numFmt = '0.0';
+    hoursRow.getCell(2).alignment = { horizontal: 'right' };
+
+    const costRow = sheet.addRow(['Gesamtkosten (€):', totalCost]);
+    costRow.getCell(1).font = { bold: true };
+    costRow.getCell(2).numFmt = '#,##0.00 "€"';
+    costRow.getCell(2).alignment = { horizontal: 'right' };
+
+    sheet.addRow([]);
+
+    // Datum und Unterschrift im Ausdruck
+    const dateRow = sheet.addRow(['Datum:', '']);
+    dateRow.getCell(1).font = { bold: true };
+
+    const signatureRow = sheet.addRow(['Unterschrift Trainer:', '________________________']);
+    signatureRow.getCell(1).font = { bold: true };
+    signatureRow.getCell(2).alignment = { horizontal: 'left' };
+
     const buffer = await workbook.xlsx.writeBuffer();
     downloadBuffer(buffer, trainerName || 'trainer', filters?.month);
     exportedFiles += 1;
@@ -105,6 +130,22 @@ function formatDate(dateStr) {
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value || 0);
+}
+
+function calculateTotals(entries) {
+  const totalMinutes = entries.reduce(
+    (sum, entry) => sum + toNumber(entry.duration_minutes),
+    0
+  );
+  const totalCost = entries.reduce((sum, entry) => sum + toNumber(entry.cost), 0);
+  const totalHours = totalMinutes / 60;
+
+  return { totalMinutes, totalHours, totalCost };
+}
+
+function toNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
 }
 
 function downloadBuffer(buffer, trainerName, month) {
