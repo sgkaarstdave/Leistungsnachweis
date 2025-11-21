@@ -16,6 +16,11 @@ Eine schlanke Web-App/PWA für Volleyball-Trainer, um Trainings- und Einsatzzeit
 4. **CSV exportieren**: Über „Export als Datei“ die gefilterten Einträge als `leistungsnachweis_YYYY-MM.csv` herunterladen.
 5. **PWA installieren**: Seite im Browser öffnen und „Zum Startbildschirm hinzufügen“ nutzen, um die App zu installieren.
 
+## Supabase-Konfiguration
+1. Öffne `.env.local` im Projekt und trage deine echten Supabase-Werte für `NEXT_PUBLIC_SUPABASE_URL` (Project URL) und `NEXT_PUBLIC_SUPABASE_ANON_KEY` (anon public key) ein. Die Datei ist bereits mit Platzhaltern angelegt, du musst nur noch ersetzen.
+2. Zur Orientierung liegt `.env.example` bei; Struktur und Variablennamen sind identisch.
+3. Der zentrale Client `lib/supabaseClient.ts` nutzt diese Variablen und bricht beim Start mit einem Hinweis ab, falls sie fehlen.
+
 ## Entwicklung & Hinweise
 - Technologie: Reines HTML/CSS/JavaScript, keine Frameworks; Datenpersistenz in `localStorage`.
 - PWA: Service Worker cached die Kern-Assets (cache-first), sodass die App offline starten kann. Eingaben bleiben lokal verfügbar.
