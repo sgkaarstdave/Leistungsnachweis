@@ -476,6 +476,16 @@ function addScheduleRow(slot = {}) {
   endInput.value = slot.end?.slice(0, 5) || '';
   endInput.className = 'team-end';
 
+  const activeLabel = document.createElement('label');
+  activeLabel.className = 'checkbox tight schedule-active';
+  const activeInput = document.createElement('input');
+  activeInput.type = 'checkbox';
+  activeInput.checked = slot.is_active !== false;
+  activeInput.className = 'team-active-toggle';
+  const activeText = document.createElement('span');
+  activeText.textContent = 'Aktiv';
+  activeLabel.append(activeInput, activeText);
+
   const removeBtn = document.createElement('button');
   removeBtn.type = 'button';
   removeBtn.className = 'ghost';
@@ -487,7 +497,7 @@ function addScheduleRow(slot = {}) {
     }
   });
 
-  row.append(dayInput, startInput, endInput, removeBtn);
+  row.append(dayInput, startInput, endInput, activeLabel, removeBtn);
   elements.teamScheduleList.appendChild(row);
 }
 
@@ -498,7 +508,8 @@ function collectTrainingSchedule() {
       const day = row.querySelector('.team-day')?.value.trim();
       const start = row.querySelector('.team-start')?.value || '';
       const end = row.querySelector('.team-end')?.value || '';
-      return { day, start, end };
+      const is_active = row.querySelector('.team-active-toggle')?.checked ?? true;
+      return { day, start, end, is_active };
     })
     .filter((slot) => slot.day || slot.start || slot.end);
 }
@@ -510,14 +521,20 @@ function normalizeTeamSchedule(team) {
       day: team.default_day || '',
       start: team.default_start_time?.slice(0, 5) || '',
       end: team.default_end_time?.slice(0, 5) || '',
+      is_active: true,
     });
   }
-  return { ...team, training_schedule: schedule };
+  const normalizedSchedule = schedule.map((slot) => ({
+    ...slot,
+    is_active: slot.is_active !== false,
+  }));
+  return { ...team, training_schedule: normalizedSchedule };
 }
 
 function formatSchedule(schedule = []) {
-  if (!schedule.length) return 'Kein Standardtermin';
-  return schedule
+  const activeSlots = schedule.filter((slot) => slot.is_active !== false);
+  if (!activeSlots.length) return 'Kein Standardtermin';
+  return activeSlots
     .map((slot) => {
       const times = [slot.start, slot.end].filter(Boolean).map((time) => time.slice(0, 5)).join(' - ');
       return `${slot.day || 'Tag offen'}${times ? ` ${times}` : ''}`;
@@ -527,18 +544,20 @@ function formatSchedule(schedule = []) {
 
 function getPreferredSlot(team) {
   if (!team?.training_schedule?.length) return null;
+  const activeSchedule = team.training_schedule.filter((slot) => slot.is_active !== false);
+  if (!activeSchedule.length) return null;
   const dateValue = elements.entryDate.value;
   if (dateValue) {
     const date = new Date(`${dateValue}T00:00:00`);
     if (!Number.isNaN(date.getTime())) {
       const weekday = date.toLocaleDateString('de-DE', { weekday: 'long' }).toLowerCase();
-      const matched = team.training_schedule.find(
+      const matched = activeSchedule.find(
         (slot) => slot.day?.toLowerCase() === weekday
       );
       if (matched) return matched;
     }
   }
-  return team.training_schedule[0];
+  return activeSchedule[0];
 }
 
 async function loadTeams() {
