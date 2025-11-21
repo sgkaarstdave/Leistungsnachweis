@@ -232,7 +232,7 @@ nav.nav-tabs {
 
 .schedule-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto auto;
   gap: 10px;
   align-items: end;
   padding: 10px;
@@ -243,6 +243,13 @@ nav.nav-tabs {
 
 .schedule-row .ghost {
   justify-self: start;
+}
+
+.schedule-active {
+  align-self: center;
+  padding-top: 0;
+  gap: 6px;
+  justify-self: center;
 }
 
 .schedule-actions {
