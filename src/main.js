@@ -61,9 +61,8 @@ const elements = {
   teamId: document.getElementById('team-id'),
   teamName: document.getElementById('team-name'),
   teamTrainer: document.getElementById('team-trainer'),
-  teamDay: document.getElementById('team-day'),
-  teamStart: document.getElementById('team-start'),
-  teamEnd: document.getElementById('team-end'),
+  teamScheduleList: document.getElementById('team-schedule-list'),
+  addTeamSlot: document.getElementById('add-team-slot'),
   teamActive: document.getElementById('team-active'),
   teamSubmit: document.getElementById('team-submit'),
   teamReset: document.getElementById('team-reset'),
@@ -77,6 +76,7 @@ async function init() {
   setDefaultDates();
   setHourlyRateDisplay();
   bindEvents();
+  renderScheduleRows();
   await restoreSession();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js').catch(() => {});
@@ -112,6 +112,7 @@ function bindEvents() {
   );
   elements.entryTeam.addEventListener('change', applyTeamDefaults);
   elements.entryTrainer.addEventListener('change', updateComputedFields);
+  elements.entryDate.addEventListener('change', applyTeamDefaults);
 
   elements.filterMonth.addEventListener('change', handleFilterChange);
   elements.filterTrainer.addEventListener('change', handleFilterChange);
@@ -121,6 +122,7 @@ function bindEvents() {
 
   elements.teamForm.addEventListener('submit', handleTeamSubmit);
   elements.teamReset.addEventListener('click', resetTeamForm);
+  elements.addTeamSlot.addEventListener('click', () => addScheduleRow());
 }
 
 async function restoreSession() {
@@ -445,6 +447,97 @@ function resetTrainerForm() {
   showFeedback(elements.trainerFeedback, '');
 }
 
+function renderScheduleRows(schedule = []) {
+  elements.teamScheduleList.innerHTML = '';
+  const rows = schedule.length ? schedule : [{}];
+  rows.forEach((slot) => addScheduleRow(slot));
+}
+
+function addScheduleRow(slot = {}) {
+  const row = document.createElement('div');
+  row.className = 'schedule-row';
+
+  const dayInput = document.createElement('input');
+  dayInput.type = 'text';
+  dayInput.placeholder = 'z.B. Mittwoch';
+  dayInput.value = slot.day || '';
+  dayInput.className = 'team-day';
+
+  const startInput = document.createElement('input');
+  startInput.type = 'time';
+  startInput.value = slot.start?.slice(0, 5) || '';
+  startInput.className = 'team-start';
+
+  const endInput = document.createElement('input');
+  endInput.type = 'time';
+  endInput.value = slot.end?.slice(0, 5) || '';
+  endInput.className = 'team-end';
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'ghost';
+  removeBtn.textContent = 'Entfernen';
+  removeBtn.addEventListener('click', () => {
+    row.remove();
+    if (!elements.teamScheduleList.children.length) {
+      renderScheduleRows();
+    }
+  });
+
+  row.append(dayInput, startInput, endInput, removeBtn);
+  elements.teamScheduleList.appendChild(row);
+}
+
+function collectTrainingSchedule() {
+  const rows = Array.from(elements.teamScheduleList.querySelectorAll('.schedule-row'));
+  return rows
+    .map((row) => {
+      const day = row.querySelector('.team-day')?.value.trim();
+      const start = row.querySelector('.team-start')?.value || '';
+      const end = row.querySelector('.team-end')?.value || '';
+      return { day, start, end };
+    })
+    .filter((slot) => slot.day || slot.start || slot.end);
+}
+
+function normalizeTeamSchedule(team) {
+  const schedule = Array.isArray(team.training_schedule) ? team.training_schedule : [];
+  if (!schedule.length && (team.default_day || team.default_start_time || team.default_end_time)) {
+    schedule.push({
+      day: team.default_day || '',
+      start: team.default_start_time?.slice(0, 5) || '',
+      end: team.default_end_time?.slice(0, 5) || '',
+    });
+  }
+  return { ...team, training_schedule: schedule };
+}
+
+function formatSchedule(schedule = []) {
+  if (!schedule.length) return 'Kein Standardtermin';
+  return schedule
+    .map((slot) => {
+      const times = [slot.start, slot.end].filter(Boolean).map((time) => time.slice(0, 5)).join(' - ');
+      return `${slot.day || 'Tag offen'}${times ? ` ${times}` : ''}`;
+    })
+    .join(' • ');
+}
+
+function getPreferredSlot(team) {
+  if (!team?.training_schedule?.length) return null;
+  const dateValue = elements.entryDate.value;
+  if (dateValue) {
+    const date = new Date(`${dateValue}T00:00:00`);
+    if (!Number.isNaN(date.getTime())) {
+      const weekday = date.toLocaleDateString('de-DE', { weekday: 'long' }).toLowerCase();
+      const matched = team.training_schedule.find(
+        (slot) => slot.day?.toLowerCase() === weekday
+      );
+      if (matched) return matched;
+    }
+  }
+  return team.training_schedule[0];
+}
+
 async function loadTeams() {
   if (!state.session) return;
   const { data, error } = await supabase
@@ -454,11 +547,14 @@ async function loadTeams() {
 
   if (error) {
     console.error('Supabase error', error);
-    setStatus('Konnte Mannschaften nicht laden: ' + error.message, 'error');
+    const hint = error.message?.includes('Could not find the table')
+      ? ' Bitte das SQL-Skript supabase/teams.sql im Supabase-Editor ausführen.'
+      : '';
+    setStatus('Konnte Mannschaften nicht laden: ' + error.message + hint, 'error');
     return;
   }
 
-  state.teams = data || [];
+  state.teams = (data || []).map(normalizeTeamSchedule);
   populateTeamSelect();
   renderTeamList();
 }
@@ -491,9 +587,7 @@ function renderTeamList() {
     const trainer = state.trainers.find((t) => t.id === team.trainer_id);
     const item = document.createElement('div');
     item.className = 'trainer-item';
-    const schedule = team.default_day
-      ? `${team.default_day} ${team.default_start_time?.slice(0, 5) || ''} - ${team.default_end_time?.slice(0, 5) || ''}`
-      : 'Kein Standardtermin';
+    const schedule = formatSchedule(team.training_schedule);
 
     item.innerHTML = `
       <div>
@@ -524,9 +618,7 @@ function startEditTeam(team) {
   elements.teamId.value = team.id;
   elements.teamName.value = team.name || '';
   elements.teamTrainer.value = team.trainer_id || '';
-  elements.teamDay.value = team.default_day || '';
-  elements.teamStart.value = team.default_start_time?.slice(0, 5) || '';
-  elements.teamEnd.value = team.default_end_time?.slice(0, 5) || '';
+  renderScheduleRows(team.training_schedule);
   elements.teamActive.checked = team.is_active !== false;
   elements.teamSubmit.textContent = 'Mannschaft aktualisieren';
   showFeedback(elements.teamFeedback, `Bearbeitung von ${team.name}`);
@@ -553,12 +645,16 @@ async function handleTeamSubmit(event) {
   event.preventDefault();
   if (!state.session) return;
 
+  const trainingSchedule = collectTrainingSchedule();
+  const primarySlot = trainingSchedule[0] || {};
+
   const payload = {
     name: elements.teamName.value.trim(),
     trainer_id: elements.teamTrainer.value || null,
-    default_day: elements.teamDay.value.trim() || null,
-    default_start_time: elements.teamStart.value || null,
-    default_end_time: elements.teamEnd.value || null,
+    training_schedule: trainingSchedule,
+    default_day: primarySlot.day || null,
+    default_start_time: primarySlot.start || null,
+    default_end_time: primarySlot.end || null,
     is_active: elements.teamActive.checked,
     created_by: state.session.user.id,
   };
@@ -599,6 +695,7 @@ function resetTeamForm() {
   elements.teamForm.reset();
   elements.teamActive.checked = true;
   elements.teamSubmit.textContent = 'Mannschaft speichern';
+  renderScheduleRows();
   showFeedback(elements.teamFeedback, '');
 }
 
@@ -608,11 +705,12 @@ function applyTeamDefaults() {
     if (selectedTeam.trainer_id) {
       elements.entryTrainer.value = selectedTeam.trainer_id;
     }
-    if (selectedTeam.default_start_time) {
-      elements.startTime.value = selectedTeam.default_start_time.slice(0, 5);
+    const slot = getPreferredSlot(selectedTeam);
+    if (slot?.start) {
+      elements.startTime.value = slot.start.slice(0, 5);
     }
-    if (selectedTeam.default_end_time) {
-      elements.endTime.value = selectedTeam.default_end_time.slice(0, 5);
+    if (slot?.end) {
+      elements.endTime.value = slot.end.slice(0, 5);
     }
   }
   updateComputedFields();

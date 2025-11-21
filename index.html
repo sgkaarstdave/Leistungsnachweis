@@ -240,18 +240,16 @@
               <span>Trainer</span>
               <select id="team-trainer"></select>
             </label>
-            <label>
-              <span>Trainingstag</span>
-              <input type="text" id="team-day" placeholder="z.B. Montag">
-            </label>
-            <label>
-              <span>Startzeit</span>
-              <input type="time" id="team-start">
-            </label>
-            <label>
-              <span>Endzeit</span>
-              <input type="time" id="team-end">
-            </label>
+            <div class="full-width">
+              <div class="label-row">
+                <span>Trainingstage</span>
+                <span class="muted small">Mehrere Einträge möglich.</span>
+              </div>
+              <div id="team-schedule-list" class="schedule-list"></div>
+              <div class="schedule-actions">
+                <button type="button" class="ghost" id="add-team-slot">Trainingstag hinzufügen</button>
+              </div>
+            </div>
             <label class="checkbox">
               <input type="checkbox" id="team-active" checked>
               <span>Aktiv</span>
