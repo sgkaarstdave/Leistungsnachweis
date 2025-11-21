@@ -1,9 +1,10 @@
-const CACHE_NAME = 'leistungsnachweis-cache-v1';
+const CACHE_NAME = 'leistungsnachweis-cache-v2';
 const ASSETS = [
   './',
   './index.html',
   './assets/css/styles.css',
-  './assets/js/app.js',
+  './src/main.js',
+  './src/state/supabaseClient.js',
   './manifest.json',
   './assets/icons/icon-192.svg',
   './assets/icons/icon-512.svg'

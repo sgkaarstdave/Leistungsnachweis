@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Leistungsnachweis Volleyball</title>
+  <title>Leistungsnachweis</title>
   <meta name="theme-color" content="#0f172a">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="assets/css/styles.css">
@@ -12,149 +12,214 @@
   <header class="app-header">
     <div class="title-group">
       <span class="app-icon">🏐</span>
-      <h1>Leistungsnachweis Volleyball</h1>
+      <div>
+        <p class="eyebrow">Supabase Demo</p>
+        <h1>Leistungsnachweis</h1>
+      </div>
     </div>
-    <nav class="nav-tabs">
-      <button class="tab-btn active" data-target="capture-section">Erfassung</button>
-      <button class="tab-btn" data-target="overview-section">Übersicht</button>
-      <button class="tab-btn" data-target="settings-section">Einstellungen</button>
-    </nav>
+    <div class="user-actions">
+      <div id="project-info" class="pill muted">Direkte Supabase-Verbindung</div>
+      <div id="session-details" class="pill hidden">
+        <span id="current-user"></span>
+        <button id="sign-out" class="ghost">Abmelden</button>
+      </div>
+    </div>
   </header>
 
   <main class="container">
-    <section id="capture-section" class="section active">
-      <div class="card">
-          <h2>Neuen Eintrag erfassen</h2>
+    <section id="auth-section" class="card auth-card">
+      <div>
+        <p class="eyebrow">Login</p>
+        <h2>Trainer-Login per E-Mail & Passwort</h2>
+        <p class="muted">Die App verbindet sich direkt mit Supabase – keine Builds, keine ENV-Variablen.</p>
+      </div>
+      <form id="login-form" class="form-grid">
+        <label>
+          <span>E-Mail</span>
+          <input type="email" id="login-email" required placeholder="name@example.com" autocomplete="email">
+        </label>
+        <label>
+          <span>Passwort</span>
+          <input type="password" id="login-password" required placeholder="••••••••" autocomplete="current-password">
+        </label>
+        <div class="full-width inline-actions">
+          <button type="submit" class="primary" id="login-submit">Anmelden</button>
+          <button type="button" class="secondary" id="toggle-mode">Konto erstellen</button>
+          <span id="login-feedback" class="feedback" aria-live="polite"></span>
+        </div>
+      </form>
+    </section>
+
+    <section id="app-section" class="hidden">
+      <div class="card nav-card">
+        <nav class="nav-tabs">
+          <button class="tab-btn active" data-target="capture-panel">Erfassung</button>
+          <button class="tab-btn" data-target="overview-panel">Übersicht</button>
+          <button class="tab-btn" data-target="trainers-panel">Trainer</button>
+        </nav>
+        <div id="status-message" class="status" aria-live="polite"></div>
+      </div>
+
+      <section id="capture-panel" class="panel active">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Neuer Eintrag</p>
+              <h2>Arbeitszeit erfassen</h2>
+            </div>
+            <div class="muted small">Berechnet Dauer & Kosten anhand der Uhrzeiten.</div>
+          </div>
+
           <form id="entry-form" class="form-grid">
             <label>
               <span>Datum</span>
               <input type="date" id="entry-date" required>
             </label>
-          <label>
-            <span>Trainer</span>
-            <select id="entry-trainer" required></select>
-          </label>
-          <label>
-            <span>Mannschaft</span>
-            <select id="entry-team" required></select>
-          </label>
-          <label>
-            <span>Art</span>
-            <select id="entry-type" required>
-              <option value="Training">Training</option>
-              <option value="Spiel">Spiel</option>
-              <option value="Turnier">Turnier</option>
-            <option value="Sonstiges">Sonstiges</option>
-          </select>
-          </label>
-          <div class="time-row full-width">
+            <label>
+              <span>Trainer</span>
+              <select id="entry-trainer" required></select>
+            </label>
+            <label>
+              <span>Einsatzort</span>
+              <input type="text" id="entry-location" placeholder="Halle, Ort" required>
+            </label>
+            <label>
+              <span>Aktivität</span>
+              <input type="text" id="entry-activity" placeholder="Training, Spiel, Turnier" required>
+            </label>
             <label>
               <span>Startzeit</span>
-              <input type="time" id="startTime" name="startTime" class="time-input" required>
+              <input type="time" id="start-time" required>
             </label>
             <label>
               <span>Endzeit</span>
-              <input type="time" id="endTime" name="endTime" class="time-input" required>
-            </label>
-          </div>
-          <datalist id="time-options"></datalist>
-          <label class="full-width">
-            <span>Notizen</span>
-            <textarea id="entry-notes" rows="3" placeholder="Optional"></textarea>
-          </label>
-          <div class="actions full-width">
-            <button type="submit" class="primary">Eintrag speichern</button>
-            <span id="save-feedback" class="feedback" aria-live="polite"></span>
-          </div>
-        </form>
-      </div>
-    </section>
-
-    <section id="overview-section" class="section">
-      <div class="card">
-        <div class="card-header">
-          <h2>Übersicht</h2>
-          <div class="filters">
-            <label>
-              <span>Monat</span>
-              <input type="month" id="overview-month">
+              <input type="time" id="end-time" required>
             </label>
             <label>
-              <span>Trainer</span>
-              <select id="filter-trainer"></select>
+              <span>Stundensatz (€)</span>
+              <input type="number" step="0.01" min="0" id="hourly-rate" placeholder="z.B. 25" required>
             </label>
             <label>
-              <span>Mannschaft</span>
-              <select id="filter-team"></select>
+              <span>Notizen</span>
+              <textarea id="entry-notes" rows="2" placeholder="Optional"></textarea>
             </label>
-            <button id="export-btn" class="secondary">Excel-Export</button>
+            <div class="full-width metrics">
+              <div>
+                <p class="muted small">Dauer</p>
+                <strong id="duration-display">0 min</strong>
+              </div>
+              <div>
+                <p class="muted small">Kosten</p>
+                <strong id="cost-display">0,00 €</strong>
+              </div>
+            </div>
+            <div class="actions full-width">
+              <button type="submit" class="primary">Eintrag speichern</button>
+              <span id="entry-feedback" class="feedback" aria-live="polite"></span>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="overview-panel" class="panel">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Übersicht</p>
+              <h2>Gefilterte Einträge</h2>
+            </div>
+            <div class="filters">
+              <label>
+                <span>Monat</span>
+                <input type="month" id="filter-month">
+              </label>
+              <label>
+                <span>Trainer</span>
+                <select id="filter-trainer"></select>
+              </label>
+            </div>
+          </div>
+
+          <div class="summary" id="summary">
+            <div>
+              <span>Gesamtminuten</span>
+              <strong id="total-minutes">0</strong>
+            </div>
+            <div>
+              <span>Gesamtstunden</span>
+              <strong id="total-hours">0:00</strong>
+            </div>
+            <div>
+              <span>Gesamtkosten</span>
+              <strong id="total-cost">0,00 €</strong>
+            </div>
+          </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Datum</th>
+                  <th>Start</th>
+                  <th>Ende</th>
+                  <th>Dauer</th>
+                  <th>Trainer</th>
+                  <th>Aktivität</th>
+                  <th>Ort</th>
+                  <th>Kosten</th>
+                  <th>Notizen</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="entries-body">
+                <tr><td colspan="10" class="empty">Keine Einträge gefunden.</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
+      </section>
 
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Datum</th>
-                <th>Wochentag</th>
-                <th>Start</th>
-                <th>Ende</th>
-                <th>Dauer</th>
-                <th>Trainer</th>
-                <th>Mannschaft</th>
-                <th>Typ</th>
-                <th>Notizen</th>
-                <th>Aktionen</th>
-              </tr>
-            </thead>
-            <tbody id="entries-body">
-              <tr><td colspan="10" class="empty">Keine Einträge für diesen Zeitraum.</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="summary" id="summary">
-          <div>
-            <span>Gesamtstunden</span>
-            <strong id="total-duration">0:00</strong>
+      <section id="trainers-panel" class="panel">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Trainer</p>
+              <h2>Stammdaten verwalten</h2>
+            </div>
+            <div class="muted small">Aktive Trainer stehen im Erfassungs-Formular zur Auswahl.</div>
           </div>
-          <div id="trainer-breakdown" class="breakdown"></div>
+
+          <form id="trainer-form" class="form-grid">
+            <input type="hidden" id="trainer-id">
+            <label>
+              <span>Name</span>
+              <input type="text" id="trainer-name" required placeholder="Vor- und Nachname">
+            </label>
+            <label>
+              <span>E-Mail</span>
+              <input type="email" id="trainer-email" placeholder="Optional">
+            </label>
+            <label>
+              <span>Stundensatz (€)</span>
+              <input type="number" step="0.01" min="0" id="trainer-rate" placeholder="z.B. 25">
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="trainer-active" checked>
+              <span>Aktiv</span>
+            </label>
+            <div class="actions full-width">
+              <button type="submit" class="primary" id="trainer-submit">Trainer speichern</button>
+              <button type="button" class="ghost" id="trainer-reset">Zurücksetzen</button>
+              <span id="trainer-feedback" class="feedback" aria-live="polite"></span>
+            </div>
+          </form>
+
+          <div id="trainer-list" class="trainer-list"></div>
         </div>
-      </div>
-    </section>
-
-    <section id="settings-section" class="section">
-      <div class="card">
-        <h2>Trainer verwalten</h2>
-        <form id="trainer-form" class="inline-form">
-          <input type="text" id="trainer-name" placeholder="Name" required>
-          <button type="submit" class="primary">Trainer hinzufügen</button>
-        </form>
-        <ul id="trainer-list" class="tag-list"></ul>
-      </div>
-
-      <div class="card">
-        <h2>Mannschaften verwalten</h2>
-        <form id="team-form" class="inline-form">
-          <input type="text" id="team-name" placeholder="Name" required>
-          <button type="submit" class="primary">Mannschaft hinzufügen</button>
-        </form>
-        <ul id="team-list" class="tag-list"></ul>
-      </div>
+      </section>
     </section>
   </main>
 
-  <script src="assets/js/app.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
-
-  <div id="modal-backdrop" class="modal-backdrop hidden">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 id="modal-title"></h3>
-        <button id="modal-close" class="icon-btn" aria-label="Modal schließen">✕</button>
-      </div>
-      <div id="modal-content"></div>
-    </div>
-  </div>
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>

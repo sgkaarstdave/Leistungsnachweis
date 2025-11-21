@@ -1,29 +1,30 @@
-# Leistungsnachweis Volleyball
+# Leistungsnachweis
 
-Eine schlanke Web-App/PWA für Volleyball-Trainer, um Trainings- und Einsatzzeiten zu erfassen, Monatsübersichten zu erstellen und Daten als CSV zu exportieren. Alle Daten bleiben ausschließlich im Browser (localStorage) – kein Login und kein Server notwendig.
+Eine schlanke, statische SPA für Volleyball-Trainer. Die App verbindet sich direkt aus dem Browser mit Supabase – ohne Build-Schritt, ohne ENV-Variablen. Einfach das Repo klonen und `index.html` im Browser öffnen (oder per GitHub Pages hosten).
 
-## Features
-- **Erfassung**: Datum, Start-/Endzeit, Trainer, Mannschaft, Art (Training/Spiel/Turnier/Sonstiges) und Notizen.
-- **Übersicht**: Monatsfilter mit Summenansicht und Aufschlüsselung pro Trainer.
-- **CSV-Export**: Gefilterte Monatsdaten als Excel-lesbare CSV-Datei herunterladen.
-- **Einstellungen**: Trainer- und Mannschaftslisten verwalten (Hinzufügen/Löschen).
-- **Offline & PWA**: Manifest und Service Worker für Installation und Offline-Start.
+## Supabase
+- Projekt: `leistungsnachweis`
+- Direkt eingebundener Client unter `src/state/supabaseClient.js` mit Projekt-URL und `anon`-Key.
+- Authentifizierung: E-Mail + Passwort via Supabase Auth.
+- Tabellen, die genutzt werden:
+  - `trainers`: `id`, `name`, `email`, `hourly_rate`, `is_active`, `created_at`, `created_by`
+  - `performance_entries`: `id`, `trainer_id`, `date`, `start_time`, `end_time`, `duration_minutes`, `activity`, `location`, `notes`, `hourly_rate`, `cost`, `created_at`, `created_by`
+
+## Funktionen
+- **Login/Registrierung** per Supabase Auth (E-Mail + Passwort).
+- **Erfassung**: Datum, Trainer, Aktivität, Ort, Start/Ende, Stundensatz und Notizen. Dauer und Kosten werden automatisch berechnet und gespeichert.
+- **Übersicht**: Monats- und Trainerfilter, Summen (Minuten, Stunden, Kosten) sowie eine Tabelle mit allen Einträgen. Einträge können gelöscht werden.
+- **Trainerverwaltung**: Trainer anlegen/ändern, Stundensatz pflegen und Trainer aktiv/inaktiv schalten. Aktive Trainer stehen im Erfassungsformular zur Auswahl.
+- **PWA-ready**: Manifest & Service Worker sind enthalten, sodass die Seite als App installiert werden kann.
 
 ## Nutzung
-1. **Trainer und Mannschaften anlegen**: Unter „Einstellungen“ neue Trainer/Mannschaften hinzufügen (Demo-Daten sind initial vorhanden).
-2. **Einträge erfassen**: In „Erfassung“ Datum, Zeiten, Trainer, Mannschaft und Art auswählen, optional Notizen hinzufügen und speichern.
-3. **Monatsübersicht prüfen**: In „Übersicht“ Monat/Jahr sowie Trainer- und Mannschaftsfilter wählen. Tabelle und Summen aktualisieren sich automatisch.
-4. **CSV exportieren**: Über „Export als Datei“ die gefilterten Einträge als `leistungsnachweis_YYYY-MM.csv` herunterladen.
-5. **PWA installieren**: Seite im Browser öffnen und „Zum Startbildschirm hinzufügen“ nutzen, um die App zu installieren.
+1. Repo klonen oder als GitHub Pages hosten.
+2. `index.html` im Browser öffnen. Es wird automatisch der Supabase-Client geladen.
+3. Mit bestehendem Supabase-Account anmelden oder ein neues Konto erstellen.
+4. Trainer anlegen und anschließend Leistungsnachweise erfassen.
+5. Die Daten sind in Supabase gespeichert und für alle eingeloggten Nutzer sichtbar.
 
-## Supabase-Konfiguration
-1. Öffne `.env.local` im Projekt und trage deine echten Supabase-Werte für `NEXT_PUBLIC_SUPABASE_URL` (Project URL) und `NEXT_PUBLIC_SUPABASE_ANON_KEY` (anon public key) ein. Die Datei ist bereits mit Platzhaltern angelegt, du musst nur noch ersetzen.
-2. Zur Orientierung liegt `.env.example` bei; Struktur und Variablennamen sind identisch.
-3. Der zentrale Client `lib/supabaseClient.ts` nutzt diese Variablen und bricht beim Start mit einem Hinweis ab, falls sie fehlen.
-
-## Entwicklung & Hinweise
-- Technologie: Reines HTML/CSS/JavaScript, keine Frameworks; Datenpersistenz in `localStorage`.
-- PWA: Service Worker cached die Kern-Assets (cache-first), sodass die App offline starten kann. Eingaben bleiben lokal verfügbar.
-- Icons: Platzhalter-SVGs liegen unter `assets/icons/` und sind im Manifest referenziert.
-
-Viel Erfolg beim Erfassen der Trainingszeiten!
+## Anpassungen
+- Supabase-URL oder -Key anpassen? → `src/state/supabaseClient.js`
+- Styling anpassen? → `assets/css/styles.css`
+- Frontend-Logik erweitern? → `src/main.js`
