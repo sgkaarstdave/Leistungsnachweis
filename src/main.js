@@ -1,8 +1,10 @@
 import { supabase } from './state/supabaseClient.js';
+import { DEFAULT_HOURLY_RATE } from './config/settings.js';
 
 const state = {
   session: null,
   trainers: [],
+  teams: [],
   entries: [],
   filters: {
     month: new Date().toISOString().slice(0, 7),
@@ -10,6 +12,7 @@ const state = {
   },
   authMode: 'login',
   editingTrainerId: null,
+  editingTeamId: null,
 };
 
 const elements = {
@@ -29,12 +32,12 @@ const elements = {
   panels: document.querySelectorAll('.panel'),
   entryForm: document.getElementById('entry-form'),
   entryDate: document.getElementById('entry-date'),
+  entryTeam: document.getElementById('entry-team'),
   entryTrainer: document.getElementById('entry-trainer'),
-  entryLocation: document.getElementById('entry-location'),
   entryActivity: document.getElementById('entry-activity'),
   startTime: document.getElementById('start-time'),
   endTime: document.getElementById('end-time'),
-  hourlyRate: document.getElementById('hourly-rate'),
+  hourlyRateDisplay: document.getElementById('hourly-rate-display'),
   entryNotes: document.getElementById('entry-notes'),
   entryFeedback: document.getElementById('entry-feedback'),
   durationDisplay: document.getElementById('duration-display'),
@@ -49,18 +52,30 @@ const elements = {
   trainerId: document.getElementById('trainer-id'),
   trainerName: document.getElementById('trainer-name'),
   trainerEmail: document.getElementById('trainer-email'),
-  trainerRate: document.getElementById('trainer-rate'),
   trainerActive: document.getElementById('trainer-active'),
   trainerSubmit: document.getElementById('trainer-submit'),
   trainerReset: document.getElementById('trainer-reset'),
   trainerFeedback: document.getElementById('trainer-feedback'),
   trainerList: document.getElementById('trainer-list'),
+  teamForm: document.getElementById('team-form'),
+  teamId: document.getElementById('team-id'),
+  teamName: document.getElementById('team-name'),
+  teamTrainer: document.getElementById('team-trainer'),
+  teamDay: document.getElementById('team-day'),
+  teamStart: document.getElementById('team-start'),
+  teamEnd: document.getElementById('team-end'),
+  teamActive: document.getElementById('team-active'),
+  teamSubmit: document.getElementById('team-submit'),
+  teamReset: document.getElementById('team-reset'),
+  teamFeedback: document.getElementById('team-feedback'),
+  teamList: document.getElementById('team-list'),
 };
 
 init();
 
 async function init() {
   setDefaultDates();
+  setHourlyRateDisplay();
   bindEvents();
   await restoreSession();
   if ('serviceWorker' in navigator) {
@@ -76,6 +91,12 @@ function setDefaultDates(preserveFilter = false) {
   }
 }
 
+function setHourlyRateDisplay() {
+  if (elements.hourlyRateDisplay) {
+    elements.hourlyRateDisplay.value = formatCurrency(DEFAULT_HOURLY_RATE);
+  }
+}
+
 function bindEvents() {
   elements.loginForm.addEventListener('submit', handleAuthSubmit);
   elements.toggleMode.addEventListener('click', toggleAuthMode);
@@ -86,16 +107,20 @@ function bindEvents() {
   );
 
   elements.entryForm.addEventListener('submit', handleEntrySubmit);
-  [elements.startTime, elements.endTime, elements.hourlyRate].forEach((el) =>
+  [elements.startTime, elements.endTime].forEach((el) =>
     el.addEventListener('input', updateComputedFields)
   );
-  elements.entryTrainer.addEventListener('change', syncRateFromTrainer);
+  elements.entryTeam.addEventListener('change', applyTeamDefaults);
+  elements.entryTrainer.addEventListener('change', updateComputedFields);
 
   elements.filterMonth.addEventListener('change', handleFilterChange);
   elements.filterTrainer.addEventListener('change', handleFilterChange);
 
   elements.trainerForm.addEventListener('submit', handleTrainerSubmit);
   elements.trainerReset.addEventListener('click', resetTrainerForm);
+
+  elements.teamForm.addEventListener('submit', handleTeamSubmit);
+  elements.teamReset.addEventListener('click', resetTeamForm);
 }
 
 async function restoreSession() {
@@ -168,7 +193,6 @@ function handleSessionChange(session) {
 
   if (isLoggedIn) {
     elements.currentUser.textContent = session.user.email;
-    setStatus('Eingeloggt und mit Supabase verbunden.');
     refreshData();
   } else {
     elements.currentUser.textContent = '';
@@ -177,8 +201,9 @@ function handleSessionChange(session) {
 
 async function refreshData() {
   await loadTrainers();
+  await loadTeams();
   await loadEntries();
-  syncRateFromTrainer();
+  updateComputedFields();
 }
 
 async function handleEntrySubmit(event) {
@@ -196,6 +221,7 @@ async function handleEntrySubmit(event) {
   elements.entryForm.classList.remove('loading');
 
   if (error) {
+    console.error('Supabase error', error);
     showFeedback(elements.entryFeedback, error.message, true);
     return;
   }
@@ -203,16 +229,17 @@ async function handleEntrySubmit(event) {
   showFeedback(elements.entryFeedback, 'Eintrag gespeichert.');
   elements.entryForm.reset();
   setDefaultDates(true);
-  syncRateFromTrainer();
+  elements.entryTeam.value = '';
+  updateComputedFields();
   await loadEntries();
 }
 
 function buildEntryPayload() {
   const date = elements.entryDate.value;
+  const teamId = elements.entryTeam.value;
   const trainerId = elements.entryTrainer.value;
   const start = elements.startTime.value;
   const end = elements.endTime.value;
-  const hourlyRate = parseFloat(elements.hourlyRate.value) || 0;
 
   if (!date || !trainerId || !start || !end) {
     showFeedback(elements.entryFeedback, 'Bitte alle Pflichtfelder ausfüllen.', true);
@@ -225,18 +252,18 @@ function buildEntryPayload() {
     return null;
   }
 
-  const cost = Number(((durationMinutes / 60) * hourlyRate).toFixed(2));
+  const cost = Number(((durationMinutes / 60) * DEFAULT_HOURLY_RATE).toFixed(2));
 
   return {
     trainer_id: trainerId,
+    team_id: teamId || null,
     date,
     start_time: start,
     end_time: end,
     duration_minutes: durationMinutes,
     activity: elements.entryActivity.value.trim(),
-    location: elements.entryLocation.value.trim(),
     notes: elements.entryNotes.value.trim(),
-    hourly_rate: hourlyRate,
+    hourly_rate: DEFAULT_HOURLY_RATE,
     cost,
   };
 }
@@ -258,6 +285,7 @@ async function loadTrainers() {
     .order('name', { ascending: true });
 
   if (error) {
+    console.error('Supabase error', error);
     setStatus('Konnte Trainer nicht laden: ' + error.message, 'error');
     return;
   }
@@ -280,6 +308,18 @@ function populateTrainerSelects() {
       elements.entryTrainer.appendChild(option);
     });
   }
+
+  elements.teamTrainer.innerHTML = '';
+  const teamTrainerPlaceholder = document.createElement('option');
+  teamTrainerPlaceholder.value = '';
+  teamTrainerPlaceholder.textContent = 'Ohne Trainer';
+  elements.teamTrainer.appendChild(teamTrainerPlaceholder);
+  state.trainers.forEach((trainer) => {
+    const option = document.createElement('option');
+    option.value = trainer.id;
+    option.textContent = `${trainer.name}${trainer.is_active === false ? ' (inaktiv)' : ''}`;
+    elements.teamTrainer.appendChild(option);
+  });
 
   elements.filterTrainer.innerHTML = '';
   const allOption = document.createElement('option');
@@ -313,7 +353,7 @@ function renderTrainerList() {
         <span class="pill ${trainer.is_active === false ? 'pill-danger' : 'pill-success'}">${
       trainer.is_active === false ? 'Inaktiv' : 'Aktiv'
     }</span>
-        <span class="pill">${formatCurrency(trainer.hourly_rate || 0)} / Std.</span>
+        <span class="pill">${formatCurrency(DEFAULT_HOURLY_RATE)} / Std.</span>
         <button class="ghost" data-action="edit" data-id="${trainer.id}">Bearbeiten</button>
         <button class="secondary" data-action="toggle" data-id="${trainer.id}">${
       trainer.is_active === false ? 'Aktivieren' : 'Deaktivieren'
@@ -333,7 +373,6 @@ function startEditTrainer(trainer) {
   elements.trainerId.value = trainer.id;
   elements.trainerName.value = trainer.name || '';
   elements.trainerEmail.value = trainer.email || '';
-  elements.trainerRate.value = trainer.hourly_rate ?? '';
   elements.trainerActive.checked = trainer.is_active !== false;
   elements.trainerSubmit.textContent = 'Trainer aktualisieren';
   showFeedback(elements.trainerFeedback, `Bearbeitung von ${trainer.name}`);
@@ -346,11 +385,13 @@ async function toggleTrainer(trainer) {
     .eq('id', trainer.id);
 
   if (error) {
+    console.error('Supabase error', error);
     setStatus('Konnte Status nicht ändern: ' + error.message, 'error');
     return;
   }
   setStatus(`Status für ${trainer.name} angepasst.`);
   await loadTrainers();
+  await loadTeams();
   await loadEntries();
 }
 
@@ -361,7 +402,7 @@ async function handleTrainerSubmit(event) {
   const payload = {
     name: elements.trainerName.value.trim(),
     email: elements.trainerEmail.value.trim() || null,
-    hourly_rate: parseFloat(elements.trainerRate.value) || 0,
+    hourly_rate: DEFAULT_HOURLY_RATE,
     is_active: elements.trainerActive.checked,
     created_by: state.session.user.id,
   };
@@ -380,6 +421,7 @@ async function handleTrainerSubmit(event) {
   elements.trainerForm.classList.remove('loading');
 
   if (error) {
+    console.error('Supabase error', error);
     showFeedback(elements.trainerFeedback, error.message, true);
     return;
   }
@@ -390,6 +432,7 @@ async function handleTrainerSubmit(event) {
   );
   resetTrainerForm();
   await loadTrainers();
+  await loadTeams();
   await loadEntries();
 }
 
@@ -400,6 +443,179 @@ function resetTrainerForm() {
   elements.trainerActive.checked = true;
   elements.trainerSubmit.textContent = 'Trainer speichern';
   showFeedback(elements.trainerFeedback, '');
+}
+
+async function loadTeams() {
+  if (!state.session) return;
+  const { data, error } = await supabase
+    .from('teams')
+    .select('*')
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.error('Supabase error', error);
+    setStatus('Konnte Mannschaften nicht laden: ' + error.message, 'error');
+    return;
+  }
+
+  state.teams = data || [];
+  populateTeamSelect();
+  renderTeamList();
+}
+
+function populateTeamSelect() {
+  elements.entryTeam.innerHTML = '';
+  const emptyOption = document.createElement('option');
+  emptyOption.value = '';
+  emptyOption.textContent = 'Keine Mannschaft';
+  elements.entryTeam.appendChild(emptyOption);
+
+  const activeTeams = state.teams.filter((team) => team.is_active !== false);
+  activeTeams.forEach((team) => {
+    const trainer = state.trainers.find((t) => t.id === team.trainer_id);
+    const option = document.createElement('option');
+    option.value = team.id;
+    option.textContent = `${team.name}${trainer ? ` (Trainer: ${trainer.name})` : ''}`;
+    elements.entryTeam.appendChild(option);
+  });
+}
+
+function renderTeamList() {
+  elements.teamList.innerHTML = '';
+  if (!state.teams.length) {
+    elements.teamList.innerHTML = '<p class="muted">Noch keine Mannschaften hinterlegt.</p>';
+    return;
+  }
+
+  state.teams.forEach((team) => {
+    const trainer = state.trainers.find((t) => t.id === team.trainer_id);
+    const item = document.createElement('div');
+    item.className = 'trainer-item';
+    const schedule = team.default_day
+      ? `${team.default_day} ${team.default_start_time?.slice(0, 5) || ''} - ${team.default_end_time?.slice(0, 5) || ''}`
+      : 'Kein Standardtermin';
+
+    item.innerHTML = `
+      <div>
+        <strong>${team.name}</strong>
+        <p class="muted small">${trainer ? trainer.name : 'Ohne Trainer'}</p>
+        <p class="muted small">${schedule}</p>
+      </div>
+      <div class="trainer-meta">
+        <span class="pill ${team.is_active === false ? 'pill-danger' : 'pill-success'}">${
+      team.is_active === false ? 'Inaktiv' : 'Aktiv'
+    }</span>
+        <button class="ghost" data-action="edit" data-id="${team.id}">Bearbeiten</button>
+        <button class="secondary" data-action="toggle" data-id="${team.id}">${
+      team.is_active === false ? 'Aktivieren' : 'Deaktivieren'
+    }</button>
+      </div>
+    `;
+
+    item.querySelector('[data-action="edit"]').addEventListener('click', () => startEditTeam(team));
+    item.querySelector('[data-action="toggle"]').addEventListener('click', () => toggleTeam(team));
+
+    elements.teamList.appendChild(item);
+  });
+}
+
+function startEditTeam(team) {
+  state.editingTeamId = team.id;
+  elements.teamId.value = team.id;
+  elements.teamName.value = team.name || '';
+  elements.teamTrainer.value = team.trainer_id || '';
+  elements.teamDay.value = team.default_day || '';
+  elements.teamStart.value = team.default_start_time?.slice(0, 5) || '';
+  elements.teamEnd.value = team.default_end_time?.slice(0, 5) || '';
+  elements.teamActive.checked = team.is_active !== false;
+  elements.teamSubmit.textContent = 'Mannschaft aktualisieren';
+  showFeedback(elements.teamFeedback, `Bearbeitung von ${team.name}`);
+}
+
+async function toggleTeam(team) {
+  const { error } = await supabase
+    .from('teams')
+    .update({ is_active: team.is_active === false, updated_at: new Date().toISOString() })
+    .eq('id', team.id);
+
+  if (error) {
+    console.error('Supabase error', error);
+    setStatus('Konnte Status nicht ändern: ' + error.message, 'error');
+    return;
+  }
+
+  setStatus(`Status für ${team.name} angepasst.`);
+  await loadTeams();
+  await loadEntries();
+}
+
+async function handleTeamSubmit(event) {
+  event.preventDefault();
+  if (!state.session) return;
+
+  const payload = {
+    name: elements.teamName.value.trim(),
+    trainer_id: elements.teamTrainer.value || null,
+    default_day: elements.teamDay.value.trim() || null,
+    default_start_time: elements.teamStart.value || null,
+    default_end_time: elements.teamEnd.value || null,
+    is_active: elements.teamActive.checked,
+    created_by: state.session.user.id,
+  };
+
+  if (!payload.name) {
+    showFeedback(elements.teamFeedback, 'Bitte Name angeben.', true);
+    return;
+  }
+
+  elements.teamForm.classList.add('loading');
+  const query = state.editingTeamId
+    ? supabase
+        .from('teams')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', state.editingTeamId)
+    : supabase.from('teams').insert(payload);
+
+  const { error } = await query;
+  elements.teamForm.classList.remove('loading');
+
+  if (error) {
+    console.error('Supabase error', error);
+    showFeedback(elements.teamFeedback, error.message, true);
+    return;
+  }
+
+  showFeedback(
+    elements.teamFeedback,
+    state.editingTeamId ? 'Mannschaft aktualisiert.' : 'Mannschaft angelegt.'
+  );
+  await loadTeams();
+  resetTeamForm();
+}
+
+function resetTeamForm() {
+  state.editingTeamId = null;
+  elements.teamId.value = '';
+  elements.teamForm.reset();
+  elements.teamActive.checked = true;
+  elements.teamSubmit.textContent = 'Mannschaft speichern';
+  showFeedback(elements.teamFeedback, '');
+}
+
+function applyTeamDefaults() {
+  const selectedTeam = state.teams.find((team) => team.id === elements.entryTeam.value);
+  if (selectedTeam) {
+    if (selectedTeam.trainer_id) {
+      elements.entryTrainer.value = selectedTeam.trainer_id;
+    }
+    if (selectedTeam.default_start_time) {
+      elements.startTime.value = selectedTeam.default_start_time.slice(0, 5);
+    }
+    if (selectedTeam.default_end_time) {
+      elements.endTime.value = selectedTeam.default_end_time.slice(0, 5);
+    }
+  }
+  updateComputedFields();
 }
 
 async function loadEntries() {
@@ -421,6 +637,7 @@ async function loadEntries() {
 
   const { data, error } = await query;
   if (error) {
+    console.error('Supabase error', error);
     setStatus('Konnte Einträge nicht laden: ' + error.message, 'error');
     return;
   }
@@ -439,6 +656,7 @@ function renderEntries() {
 
   state.entries.forEach((entry) => {
     const trainer = state.trainers.find((t) => t.id === entry.trainer_id);
+    const team = state.teams.find((t) => t.id === entry.team_id);
     const row = document.createElement('tr');
     row.innerHTML = `
       <td>${formatDate(entry.date)}</td>
@@ -446,8 +664,8 @@ function renderEntries() {
       <td>${entry.end_time?.slice(0, 5) || ''}</td>
       <td>${formatDuration(entry.duration_minutes)}</td>
       <td>${trainer ? trainer.name : '–'}</td>
+      <td>${team ? team.name : '–'}</td>
       <td>${entry.activity || '–'}</td>
-      <td>${entry.location || '–'}</td>
       <td>${formatCurrency(entry.cost || 0)}</td>
       <td class="notes">${entry.notes || ''}</td>
       <td><button class="ghost" data-id="${entry.id}">Löschen</button></td>
@@ -463,6 +681,7 @@ function renderEntries() {
 async function deleteEntry(id) {
   const { error } = await supabase.from('performance_entries').delete().eq('id', id);
   if (error) {
+    console.error('Supabase error', error);
     setStatus('Konnte Eintrag nicht löschen: ' + error.message, 'error');
     return;
   }
@@ -481,23 +700,17 @@ function switchPanel(targetId) {
   elements.panels.forEach((panel) => panel.classList.toggle('active', panel.id === targetId));
 }
 
-function syncRateFromTrainer() {
-  const selectedId = elements.entryTrainer.value;
-  const trainer = state.trainers.find((t) => t.id === selectedId);
-  if (trainer) {
-    elements.hourlyRate.value = trainer.hourly_rate ?? '';
-  }
-  updateComputedFields();
-}
-
 function updateComputedFields() {
   const start = elements.startTime.value;
   const end = elements.endTime.value;
-  const rate = parseFloat(elements.hourlyRate.value) || 0;
-  if (!start || !end) return;
+  if (!start || !end) {
+    elements.durationDisplay.textContent = '0 min';
+    elements.costDisplay.textContent = formatCurrency(0);
+    return;
+  }
 
   const minutes = calculateDuration(start, end);
-  const cost = Number(((minutes / 60) * rate).toFixed(2));
+  const cost = Number(((minutes / 60) * DEFAULT_HOURLY_RATE).toFixed(2));
 
   elements.durationDisplay.textContent = `${minutes} min`;
   elements.costDisplay.textContent = formatCurrency(cost);

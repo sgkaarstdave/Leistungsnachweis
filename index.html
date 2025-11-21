@@ -18,7 +18,6 @@
       </div>
     </div>
     <div class="user-actions">
-      <div id="project-info" class="pill muted">Direkte Supabase-Verbindung</div>
       <div id="session-details" class="pill hidden">
         <span id="current-user"></span>
         <button id="sign-out" class="ghost">Abmelden</button>
@@ -56,6 +55,7 @@
           <button class="tab-btn active" data-target="capture-panel">Erfassung</button>
           <button class="tab-btn" data-target="overview-panel">Übersicht</button>
           <button class="tab-btn" data-target="trainers-panel">Trainer</button>
+          <button class="tab-btn" data-target="teams-panel">Mannschaften</button>
         </nav>
         <div id="status-message" class="status" aria-live="polite"></div>
       </div>
@@ -76,16 +76,22 @@
               <input type="date" id="entry-date" required>
             </label>
             <label>
+              <span>Mannschaft</span>
+              <select id="entry-team">
+                <option value="">Keine Mannschaft</option>
+              </select>
+            </label>
+            <label>
               <span>Trainer</span>
               <select id="entry-trainer" required></select>
             </label>
             <label>
-              <span>Einsatzort</span>
-              <input type="text" id="entry-location" placeholder="Halle, Ort" required>
-            </label>
-            <label>
               <span>Aktivität</span>
-              <input type="text" id="entry-activity" placeholder="Training, Spiel, Turnier" required>
+              <select id="entry-activity" required>
+                <option value="Training">Training</option>
+                <option value="Spiel">Spiel</option>
+                <option value="Turnier">Turnier</option>
+              </select>
             </label>
             <label>
               <span>Startzeit</span>
@@ -96,8 +102,8 @@
               <input type="time" id="end-time" required>
             </label>
             <label>
-              <span>Stundensatz (€)</span>
-              <input type="number" step="0.01" min="0" id="hourly-rate" placeholder="z.B. 25" required>
+              <span>Stundensatz (fix)</span>
+              <input type="text" id="hourly-rate-display" disabled>
             </label>
             <label>
               <span>Notizen</span>
@@ -164,8 +170,8 @@
                   <th>Ende</th>
                   <th>Dauer</th>
                   <th>Trainer</th>
+                  <th>Mannschaft</th>
                   <th>Aktivität</th>
-                  <th>Ort</th>
                   <th>Kosten</th>
                   <th>Notizen</th>
                   <th></th>
@@ -199,10 +205,6 @@
               <span>E-Mail</span>
               <input type="email" id="trainer-email" placeholder="Optional">
             </label>
-            <label>
-              <span>Stundensatz (€)</span>
-              <input type="number" step="0.01" min="0" id="trainer-rate" placeholder="z.B. 25">
-            </label>
             <label class="checkbox">
               <input type="checkbox" id="trainer-active" checked>
               <span>Aktiv</span>
@@ -215,6 +217,53 @@
           </form>
 
           <div id="trainer-list" class="trainer-list"></div>
+        </div>
+      </section>
+
+      <section id="teams-panel" class="panel">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Mannschaften</p>
+              <h2>Mannschaften verwalten</h2>
+            </div>
+            <div class="muted small">Trainer und Standardzeiten pro Mannschaft hinterlegen.</div>
+          </div>
+
+          <form id="team-form" class="form-grid">
+            <input type="hidden" id="team-id">
+            <label>
+              <span>Name</span>
+              <input type="text" id="team-name" required placeholder="z.B. Herren 1">
+            </label>
+            <label>
+              <span>Trainer</span>
+              <select id="team-trainer"></select>
+            </label>
+            <label>
+              <span>Trainingstag</span>
+              <input type="text" id="team-day" placeholder="z.B. Montag">
+            </label>
+            <label>
+              <span>Startzeit</span>
+              <input type="time" id="team-start">
+            </label>
+            <label>
+              <span>Endzeit</span>
+              <input type="time" id="team-end">
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="team-active" checked>
+              <span>Aktiv</span>
+            </label>
+            <div class="actions full-width">
+              <button type="submit" class="primary" id="team-submit">Mannschaft speichern</button>
+              <button type="button" class="ghost" id="team-reset">Zurücksetzen</button>
+              <span id="team-feedback" class="feedback" aria-live="polite"></span>
+            </div>
+          </form>
+
+          <div id="team-list" class="trainer-list"></div>
         </div>
       </section>
     </section>
