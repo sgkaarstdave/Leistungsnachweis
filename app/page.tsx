@@ -21,7 +21,7 @@ export default function HomePage() {
 
   return (
     <div className="flex items-center justify-center h-screen">
-      <p className="text-lg">Weiterleitung...</p>
+      <p className="text-lg">Lade...</p>
     </div>
   );
 }

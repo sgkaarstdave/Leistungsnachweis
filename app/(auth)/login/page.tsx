@@ -2,16 +2,15 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import type { AuthError } from '@supabase/supabase-js';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<AuthError | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -21,29 +20,49 @@ export default function LoginPage() {
 
   const ensureProfile = async () => {
     const user = (await supabase.auth.getUser()).data.user;
-    if (!user) return;
-    const { data } = await supabase
+    if (!user) return null;
+
+    const { data, error } = await supabase
       .from('profiles')
       .select('id')
       .eq('id', user.id)
       .single();
-    if (!data) {
-      await supabase.from('profiles').insert({ id: user.id, role: 'trainer', full_name: '' });
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
     }
+
+    if (!data) {
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert({ id: user.id, role: 'trainer', full_name: '' });
+
+      if (insertError) {
+        throw insertError;
+      }
+    }
+
+    return user;
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     if (signInError) {
-      setError(signInError);
+      setError(signInError.message);
       setLoading(false);
       return;
     }
-    await ensureProfile();
-    router.replace('/dashboard');
+    try {
+      await ensureProfile();
+      router.replace('/dashboard');
+    } catch (profileError) {
+      console.error(profileError);
+      setError((profileError as Error).message);
+      setLoading(false);
+    }
   };
 
   return (
@@ -59,7 +78,7 @@ export default function LoginPage() {
             <label className="block text-sm font-medium text-gray-700">Passwort</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
-          {error && <p className="text-red-600 text-sm">{error.message}</p>}
+          {error && <p className="text-red-600 text-sm">{error}</p>}
           <button
             type="submit"
             className="w-full bg-blue-600 text-white hover:bg-blue-700"

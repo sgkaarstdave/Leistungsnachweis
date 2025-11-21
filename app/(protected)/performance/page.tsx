@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import type { PerformanceEntry, Trainer } from '@/types';
 
@@ -11,6 +11,7 @@ export default function PerformancePage() {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [filterTrainer, setFilterTrainer] = useState('');
   const [periodFrom, setPeriodFrom] = useState('');
   const [periodTo, setPeriodTo] = useState('');
@@ -37,8 +38,13 @@ export default function PerformancePage() {
 
   const fetchTrainers = async () => {
     const { data, error } = await supabase.from('trainers').select('*').order('name');
-    if (error) setError(error.message);
-    else setTrainers(data as Trainer[]);
+    if (error) {
+      console.error(error);
+      setError(error.message);
+    } else {
+      setError(null);
+      setTrainers(data as Trainer[]);
+    }
   };
 
   const fetchEntries = async () => {
@@ -51,8 +57,13 @@ export default function PerformancePage() {
     if (periodFrom) query = query.gte('date', periodFrom);
     if (periodTo) query = query.lte('date', periodTo);
     const { data, error } = await query;
-    if (error) setError(error.message);
-    else setEntries(data as PerformanceEntry[]);
+    if (error) {
+      console.error(error);
+      setError(error.message);
+    } else {
+      setError(null);
+      setEntries(data as PerformanceEntry[]);
+    }
     setLoading(false);
   };
 
@@ -77,9 +88,10 @@ export default function PerformancePage() {
     return form.duration_minutes ? Number(form.duration_minutes) : 0;
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     if (!form.trainer_id || !form.date) {
       setError('Bitte Trainer und Datum auswählen');
       return;
@@ -87,7 +99,12 @@ export default function PerformancePage() {
     const duration = calculateDuration();
     const hourlyRate = form.hourly_rate ? Number(form.hourly_rate) : 0;
     const cost = duration && hourlyRate ? (duration / 60) * hourlyRate : null;
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      console.error(userError);
+      setError('Konnte angemeldeten Nutzer nicht ermitteln.');
+      return;
+    }
     const { error: insertError } = await supabase.from('performance_entries').insert({
       trainer_id: form.trainer_id,
       date: form.date,
@@ -99,12 +116,14 @@ export default function PerformancePage() {
       notes: form.notes || null,
       hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : null,
       cost,
-      created_by: userData.user?.id ?? null
+      created_by: userData.user.id
     });
     if (insertError) {
+      console.error(insertError);
       setError(insertError.message);
       return;
     }
+    setSuccess('Leistungsnachweis wurde gespeichert.');
     setForm({
       trainer_id: '',
       date: '',
@@ -153,6 +172,7 @@ export default function PerformancePage() {
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
+      console.error(err);
       setError((err as Error).message);
     }
   };
@@ -202,6 +222,7 @@ export default function PerformancePage() {
       </div>
 
       {error && <p className="text-red-600 text-sm">{error}</p>}
+      {success && <p className="text-green-600 text-sm">{success}</p>}
 
       <div className="table-container">
         {loading ? (

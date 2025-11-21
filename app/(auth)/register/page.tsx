@@ -2,16 +2,15 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import type { AuthError } from '@supabase/supabase-js';
 
 export default function RegisterPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<AuthError | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -19,20 +18,28 @@ export default function RegisterPage() {
     });
   }, [router]);
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     const { error: signUpError } = await supabase.auth.signUp({ email, password });
     if (signUpError) {
-      setError(signUpError);
+      setError(signUpError.message);
       setLoading(false);
       return;
     }
     // Profil als Trainer direkt anlegen
     const user = (await supabase.auth.getUser()).data.user;
     if (user) {
-      await supabase.from('profiles').insert({ id: user.id, role: 'trainer', full_name: '' });
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert({ id: user.id, role: 'trainer', full_name: '' });
+      if (insertError) {
+        console.error(insertError);
+        setError(insertError.message);
+        setLoading(false);
+        return;
+      }
     }
     router.replace('/dashboard');
   };
@@ -50,7 +57,7 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-gray-700">Passwort</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
-          {error && <p className="text-red-600 text-sm">{error.message}</p>}
+          {error && <p className="text-red-600 text-sm">{error}</p>}
           <button
             type="submit"
             className="w-full bg-blue-600 text-white hover:bg-blue-700"
