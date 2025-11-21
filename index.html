@@ -240,20 +240,24 @@
               <span>Trainer</span>
               <select id="team-trainer"></select>
             </label>
-            <div class="full-width">
-              <div class="label-row">
-                <span>Trainingstage</span>
-                <span class="muted small">Mehrere Einträge möglich.</span>
+            <div class="full-width team-meta-row">
+              <div class="team-schedule-wrapper">
+                <div class="label-row">
+                  <span>Trainingstage</span>
+                  <span class="muted small">Mehrere Einträge möglich.</span>
+                </div>
+                <div id="team-schedule-list" class="schedule-list"></div>
+                <div class="schedule-actions">
+                  <button type="button" class="ghost" id="add-team-slot">Trainingstag hinzufügen</button>
+                </div>
               </div>
-              <div id="team-schedule-list" class="schedule-list"></div>
-              <div class="schedule-actions">
-                <button type="button" class="ghost" id="add-team-slot">Trainingstag hinzufügen</button>
+              <div class="team-status">
+                <label class="checkbox tight">
+                  <input type="checkbox" id="team-active" checked>
+                  <span>Aktiv</span>
+                </label>
               </div>
             </div>
-            <label class="checkbox">
-              <input type="checkbox" id="team-active" checked>
-              <span>Aktiv</span>
-            </label>
             <div class="actions full-width">
               <button type="submit" class="primary" id="team-submit">Mannschaft speichern</button>
               <button type="button" class="ghost" id="team-reset">Zurücksetzen</button>

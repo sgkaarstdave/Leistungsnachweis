@@ -210,6 +210,26 @@ nav.nav-tabs {
   gap: 8px;
 }
 
+.team-meta-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.team-schedule-wrapper {
+  flex: 1 1 360px;
+  min-width: 280px;
+}
+
+.team-status {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex: 0 0 200px;
+}
+
 .schedule-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -250,6 +270,10 @@ textarea {
   align-items: center;
   gap: 8px;
   padding-top: 22px;
+}
+
+.checkbox.tight {
+  padding-top: 0;
 }
 
 .actions,
