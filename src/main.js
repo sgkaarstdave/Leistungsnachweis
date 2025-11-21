@@ -1,5 +1,6 @@
 import { supabase } from './state/supabaseClient.js';
 import { DEFAULT_HOURLY_RATE } from './config/settings.js';
+import { exportToExcel } from './export/excelExport.js';
 
 const state = {
   session: null,
@@ -37,13 +38,14 @@ const elements = {
   entryActivity: document.getElementById('entry-activity'),
   startTime: document.getElementById('start-time'),
   endTime: document.getElementById('end-time'),
-  hourlyRateDisplay: document.getElementById('hourly-rate-display'),
+  hourlyRateInfo: document.getElementById('hourly-rate-info'),
   entryNotes: document.getElementById('entry-notes'),
   entryFeedback: document.getElementById('entry-feedback'),
   durationDisplay: document.getElementById('duration-display'),
   costDisplay: document.getElementById('cost-display'),
   filterMonth: document.getElementById('filter-month'),
   filterTrainer: document.getElementById('filter-trainer'),
+  exportExcel: document.getElementById('export-excel'),
   entriesBody: document.getElementById('entries-body'),
   totalMinutes: document.getElementById('total-minutes'),
   totalHours: document.getElementById('total-hours'),
@@ -74,7 +76,7 @@ init();
 
 async function init() {
   setDefaultDates();
-  setHourlyRateDisplay();
+  setHourlyRateInfo();
   bindEvents();
   renderScheduleRows();
   await restoreSession();
@@ -91,9 +93,9 @@ function setDefaultDates(preserveFilter = false) {
   }
 }
 
-function setHourlyRateDisplay() {
-  if (elements.hourlyRateDisplay) {
-    elements.hourlyRateDisplay.value = formatCurrency(DEFAULT_HOURLY_RATE);
+function setHourlyRateInfo() {
+  if (elements.hourlyRateInfo) {
+    elements.hourlyRateInfo.textContent = formatCurrency(DEFAULT_HOURLY_RATE);
   }
 }
 
@@ -116,6 +118,7 @@ function bindEvents() {
 
   elements.filterMonth.addEventListener('change', handleFilterChange);
   elements.filterTrainer.addEventListener('change', handleFilterChange);
+  elements.exportExcel?.addEventListener('click', handleExportExcel);
 
   elements.trainerForm.addEventListener('submit', handleTrainerSubmit);
   elements.trainerReset.addEventListener('click', resetTrainerForm);
@@ -791,6 +794,32 @@ function handleFilterChange() {
   state.filters.month = elements.filterMonth.value;
   state.filters.trainerId = elements.filterTrainer.value;
   loadEntries();
+}
+
+async function handleExportExcel() {
+  if (!state.session || !elements.exportExcel) return;
+
+  elements.exportExcel.disabled = true;
+  const previousLabel = elements.exportExcel.textContent;
+  elements.exportExcel.textContent = 'Export läuft...';
+  setStatus('');
+
+  const { exportedFiles = 0, totalEntries = 0, error } = await exportToExcel({
+    supabase,
+    filters: { ...state.filters },
+  });
+
+  if (error) {
+    setStatus('Konnte Export nicht durchführen: ' + error.message, 'error');
+  } else if (!totalEntries) {
+    setStatus('Keine Einträge für den Export gefunden.', 'info');
+  } else {
+    const suffix = exportedFiles === 1 ? '' : 'en';
+    setStatus(`Export abgeschlossen (${exportedFiles} Datei${suffix}).`);
+  }
+
+  elements.exportExcel.disabled = false;
+  elements.exportExcel.textContent = previousLabel;
 }
 
 function switchPanel(targetId) {
