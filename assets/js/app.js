@@ -866,40 +866,56 @@ function openEditEntryModal(entryId) {
   openModal('Eintrag bearbeiten', form);
 }
 
-// Excel-Export: Trainer-Summen pro Monat erzeugen
-function exportToExcel() {
-  const monthInput = document.getElementById('overview-month');
-  const [yearValue, monthValue] = monthInput.value
-    ? monthInput.value.split('-')
-    : [String(new Date().getFullYear()), String(new Date().getMonth() + 1).padStart(2, '0')];
-  const year = Number(yearValue);
-  const month = Number(monthValue);
-  const teamFilter = document.getElementById('filter-team').value;
+function sanitizeFilenamePart(value) {
+  const replacements = {
+    ä: 'ae',
+    ö: 'oe',
+    ü: 'ue',
+    Ä: 'Ae',
+    Ö: 'Oe',
+    Ü: 'Ue',
+    ß: 'ss'
+  };
 
-  const entries = loadEntries();
-  const trainers = loadTrainers();
-  const teams = loadTeams();
+  return value
+    .split('')
+    .map((char) => replacements[char] || char)
+    .join('')
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9._-]/g, '');
+}
 
-  const monthEntries = entries.filter((entry) => {
-    const entryDate = new Date(entry.date);
-    return entryDate.getFullYear() === year && entryDate.getMonth() + 1 === month;
+function getMonthName(month) {
+  const months = [
+    'Januar',
+    'Februar',
+    'März',
+    'April',
+    'Mai',
+    'Juni',
+    'Juli',
+    'August',
+    'September',
+    'Oktober',
+    'November',
+    'Dezember'
+  ];
+  return months[month - 1] || String(month);
+}
+
+function addStylesToSheet(sheet, ranges) {
+  ranges.forEach(({ cell, style }) => {
+    if (!sheet[cell]) return;
+    sheet[cell].s = { ...(sheet[cell].s || {}), ...style };
   });
+}
 
-  const filtered = monthEntries.filter((entry) => teamFilter === 'all' || entry.teamId === teamFilter);
-
-  if (filtered.length === 0) {
-    alert('Keine Einträge zum Exportieren.');
-    return;
-  }
-
-  const trainerTotals = filtered.reduce((acc, entry) => {
-    if (!acc[entry.trainerId]) {
-      acc[entry.trainerId] = { minutes: 0, count: 0 };
-    }
-    acc[entry.trainerId].minutes += entry.durationMinutes;
-    acc[entry.trainerId].count += 1;
-    return acc;
-  }, {});
+function exportSingleTrainerWorkbook(trainer, entries, month, year, teams) {
+  const monthPart = String(month).padStart(2, '0');
+  const totalMinutes = entries.reduce((acc, entry) => acc + entry.durationMinutes, 0);
+  const totalHoursDecimal = Number((totalMinutes / 60).toFixed(2));
+  const amount = Number((totalHoursDecimal * HOURLY_RATE).toFixed(2));
+  const monthName = getMonthName(month);
 
   const overviewHeader = [
     'TrainerName',
@@ -913,33 +929,17 @@ function exportToExcel() {
     'BetragEuro'
   ];
 
-  const overviewRows = Object.entries(trainerTotals)
-    .map(([trainerId, data]) => {
-      const trainerName = trainers.find((t) => t.id === trainerId)?.name || 'Unbekannt';
-      const hoursDecimal = Number((data.minutes / 60).toFixed(2));
-      return {
-        trainerName,
-        minutes: data.minutes,
-        hoursDecimal,
-        hoursFormatted: formatDuration(data.minutes),
-        month: String(month).padStart(2, '0'),
-        year,
-        count: data.count
-      };
-    })
-    .sort((a, b) => a.trainerName.localeCompare(b.trainerName));
-
-  const overviewRowValues = overviewRows.map((row) => [
-    row.trainerName,
-    row.minutes,
-    row.hoursDecimal,
-    row.hoursFormatted,
-    row.month,
-    row.year,
-    row.count,
+  const overviewRow = [
+    trainer.name,
+    totalMinutes,
+    totalHoursDecimal,
+    formatDuration(totalMinutes),
+    monthPart,
+    year,
+    entries.length,
     HOURLY_RATE,
-    Number((row.hoursDecimal * HOURLY_RATE).toFixed(2))
-  ]);
+    amount
+  ];
 
   const detailsHeader = [
     'Datum',
@@ -952,149 +952,254 @@ function exportToExcel() {
     'Notizen'
   ];
 
+  const sortedEntries = entries
+    .slice()
+    .sort(
+      (a, b) => new Date(a.date) - new Date(b.date) || parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)
+    )
+    .map((entry) => {
+      const teamName = teams.find((t) => t.id === entry.teamId)?.name || 'Unbekannt';
+      return [
+        entry.date,
+        entry.startTime,
+        entry.endTime,
+        entry.durationMinutes,
+        formatDuration(entry.durationMinutes),
+        teamName,
+        entry.type,
+        entry.notes || ''
+      ];
+    });
+
+  const today = new Date().toLocaleDateString('de-DE');
+
+  const worksheetData = [
+    [`Leistungsnachweis Volleyball – ${trainer.name} – ${monthName} ${year}`],
+    [],
+    ['Übersicht'],
+    overviewHeader,
+    overviewRow,
+    [],
+    ['Details'],
+    detailsHeader,
+    ...sortedEntries,
+    [],
+    ['Datum:', today],
+    ['__________________________', '', '__________________________'],
+    ['Unterschrift Abteilungsleitung', '', 'Unterschrift Trainer / Übungsleiter']
+  ];
+
+  const sheet = XLSX.utils.aoa_to_sheet(worksheetData);
+
+  sheet['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: Math.max(detailsHeader.length, overviewHeader.length) - 1 } }
+  ];
+
+  sheet['!cols'] = [
+    { wch: 24 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 18 },
+    { wch: 16 },
+    { wch: 28 },
+    { wch: 16 }
+  ];
+
+  const currencyFormat = '#,##0.00 "€"';
+  const overviewRowIndex = 4;
+  const rateCell = XLSX.utils.encode_cell({ r: overviewRowIndex, c: 7 });
+  const amountCell = XLSX.utils.encode_cell({ r: overviewRowIndex, c: 8 });
+
+  sheet[rateCell] = { v: HOURLY_RATE, t: 'n', z: currencyFormat };
+  sheet[amountCell] = { v: amount, t: 'n', z: currencyFormat };
+
+  const boldHeaderStyle = { font: { bold: true, sz: 12 } };
+  const titleStyle = { font: { bold: true, sz: 14 }, alignment: { horizontal: 'center' } };
+  const labelStyle = { font: { bold: true, sz: 12 } };
+  const numberAlignment = { alignment: { horizontal: 'right' } };
+
+  addStylesToSheet(sheet, [
+    { cell: XLSX.utils.encode_cell({ r: 0, c: 0 }), style: titleStyle },
+    { cell: XLSX.utils.encode_cell({ r: 2, c: 0 }), style: labelStyle },
+    { cell: XLSX.utils.encode_cell({ r: 6, c: 0 }), style: labelStyle }
+  ]);
+
+  overviewHeader.forEach((_, index) => {
+    const headerCell = XLSX.utils.encode_cell({ r: 3, c: index });
+    addStylesToSheet(sheet, [{ cell: headerCell, style: boldHeaderStyle }]);
+    const dataCell = XLSX.utils.encode_cell({ r: overviewRowIndex, c: index });
+    if (index > 0) {
+      addStylesToSheet(sheet, [{ cell: dataCell, style: numberAlignment }]);
+    }
+  });
+
+  detailsHeader.forEach((_, index) => {
+    const headerCell = XLSX.utils.encode_cell({ r: 7, c: index });
+    addStylesToSheet(sheet, [{ cell: headerCell, style: boldHeaderStyle }]);
+  });
+
+  const detailsStartRow = 8;
+  sortedEntries.forEach((_, idx) => {
+    const rowIndex = detailsStartRow + idx;
+    const minuteCell = XLSX.utils.encode_cell({ r: rowIndex, c: 3 });
+    const durationCell = XLSX.utils.encode_cell({ r: rowIndex, c: 4 });
+    addStylesToSheet(sheet, [
+      { cell: minuteCell, style: numberAlignment },
+      { cell: durationCell, style: { alignment: { horizontal: 'center' } } }
+    ]);
+  });
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Nachweis');
+
+  const safeTrainerName = sanitizeFilenamePart(trainer.name || 'Unbekannt');
+  XLSX.writeFile(workbook, `leistungsnachweis_${safeTrainerName}_${year}-${monthPart}.xlsx`);
+}
+
+function exportTrainerHtml(trainer, entries, month, year, teams) {
   const monthPart = String(month).padStart(2, '0');
+  const monthName = getMonthName(month);
+  const totalMinutes = entries.reduce((acc, entry) => acc + entry.durationMinutes, 0);
+  const totalHoursDecimal = Number((totalMinutes / 60).toFixed(2));
+  const amount = Number((totalHoursDecimal * HOURLY_RATE).toFixed(2));
+  const today = new Date().toLocaleDateString('de-DE');
+
+  const overviewHeader = [
+    'TrainerName',
+    'GesamtMinuten',
+    'GesamtStundenDezimal',
+    'GesamtStundenHHMM',
+    'Monat',
+    'Jahr',
+    'AnzahlEinsaetze',
+    'StundensatzEuro',
+    'BetragEuro'
+  ];
+
+  const overviewRow = [
+    trainer.name,
+    totalMinutes,
+    totalHoursDecimal,
+    formatDuration(totalMinutes),
+    monthPart,
+    year,
+    entries.length,
+    `${HOURLY_RATE.toFixed(2)} €`,
+    `${amount.toFixed(2)} €`
+  ];
+
+  const detailsHeader = [
+    'Datum',
+    'Startzeit',
+    'Endzeit',
+    'DauerMinuten',
+    'DauerHHMM',
+    'Mannschaft',
+    'Typ',
+    'Notizen'
+  ];
+
+  const sortedEntries = entries
+    .slice()
+    .sort(
+      (a, b) => new Date(a.date) - new Date(b.date) || parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)
+    )
+    .map((entry) => {
+      const teamName = teams.find((t) => t.id === entry.teamId)?.name || 'Unbekannt';
+      return [
+        entry.date,
+        entry.startTime,
+        entry.endTime,
+        entry.durationMinutes,
+        formatDuration(entry.durationMinutes),
+        teamName,
+        entry.type,
+        entry.notes || ''
+      ];
+    });
+
+  const escapeCell = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const overviewTable = [overviewHeader, overviewRow]
+    .map((row, idx) =>
+      `<tr>${row
+        .map((cell) => `<${idx === 0 ? 'th' : 'td'}>${escapeCell(cell)}</${idx === 0 ? 'th' : 'td'}>`)
+        .join('')}</tr>`
+    )
+    .join('');
+
+  const detailsTable = [
+    `<tr>${detailsHeader.map((cell) => `<th>${escapeCell(cell)}</th>`).join('')}</tr>`,
+    ...sortedEntries.map((row) => `<tr>${row.map((cell) => `<td>${escapeCell(cell)}</td>`).join('')}</tr>`)
+  ].join('');
+
+  const signatureBlockHtml = `<br><table><tr><td>Datum:</td><td>${escapeCell(today)}</td></tr><tr><td>__________________________</td><td></td><td>__________________________</td></tr><tr><td>Unterschrift Abteilungsleitung</td><td></td><td>Unterschrift Trainer / Übungsleiter</td></tr></table>`;
+
+  const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>table{border-collapse:collapse;margin-top:8px;}td,th{border:1px solid #ccc;padding:4px;}h2{text-align:center;}th{background:#f2f2f2;}body{font-family:Arial, sans-serif;}</style></head><body><h2>Leistungsnachweis Volleyball – ${escapeCell(
+    trainer.name
+  )} – ${escapeCell(monthName)} ${escapeCell(String(year))}</h2><h3>Übersicht</h3><table>${overviewTable}</table><h3>Details</h3><table>${detailsTable}</table>${signatureBlockHtml}</body></html>`;
+
+  const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `leistungsnachweis_${sanitizeFilenamePart(trainer.name || 'Unbekannt')}_${year}-${monthPart}.xls`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+// Excel-Export: Trainer-Summen pro Monat erzeugen
+function exportToExcel() {
+  const monthInput = document.getElementById('overview-month');
+  const trainerFilter = document.getElementById('filter-trainer');
+  const teamFilter = document.getElementById('filter-team');
+  const [yearValue, monthValue] = monthInput.value
+    ? monthInput.value.split('-')
+    : [String(new Date().getFullYear()), String(new Date().getMonth() + 1).padStart(2, '0')];
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+
+  const entries = loadEntries();
+  const trainers = loadTrainers();
+  const teams = loadTeams();
+
+  const filtered = entries.filter((entry) => {
+    const entryDate = new Date(entry.date);
+    const matchesMonth = entryDate.getFullYear() === year && entryDate.getMonth() + 1 === month;
+    const matchesTrainer = trainerFilter.value === 'all' || entry.trainerId === trainerFilter.value;
+    const matchesTeam = teamFilter.value === 'all' || entry.teamId === teamFilter.value;
+    return matchesMonth && matchesTrainer && matchesTeam;
+  });
+
+  if (filtered.length === 0) {
+    alert('Keine Einträge zum Exportieren.');
+    return;
+  }
 
   const groupedByTrainer = filtered.reduce((acc, entry) => {
     (acc[entry.trainerId] = acc[entry.trainerId] || []).push(entry);
     return acc;
   }, {});
 
-  const trainerOrder = Object.keys(groupedByTrainer)
+  const trainerGroups = Object.keys(groupedByTrainer)
     .map((trainerId) => ({
-      trainerId,
-      trainerName: trainers.find((t) => t.id === trainerId)?.name || 'Unbekannt',
+      trainer: trainers.find((t) => t.id === trainerId) || { id: trainerId, name: 'Unbekannt' },
       entries: groupedByTrainer[trainerId]
     }))
-    .sort((a, b) => a.trainerName.localeCompare(b.trainerName));
-
-  const detailBlocks = [[], ['Details']];
-
-  trainerOrder.forEach((trainerBlock, index) => {
-    detailBlocks.push([]);
-    detailBlocks.push([`Trainer: ${trainerBlock.trainerName}`, `Monat: ${monthPart}/${year}`]);
-    detailBlocks.push(detailsHeader);
-
-    trainerBlock.entries
-      .slice()
-      .sort(
-        (a, b) =>
-          new Date(a.date) - new Date(b.date) || parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)
-      )
-      .forEach((entry) => {
-        const teamName = teams.find((t) => t.id === entry.teamId)?.name || 'Unbekannt';
-        detailBlocks.push([
-          entry.date,
-          entry.startTime,
-          entry.endTime,
-          entry.durationMinutes,
-          formatDuration(entry.durationMinutes),
-          teamName,
-          entry.type,
-          entry.notes || ''
-        ]);
-      });
-
-    if (index < trainerOrder.length - 1) {
-      detailBlocks.push([]);
-    }
-  });
+    .sort((a, b) => a.trainer.name.localeCompare(b.trainer.name));
 
   if (typeof XLSX !== 'undefined') {
-    const overviewSheet = XLSX.utils.aoa_to_sheet([]);
-
-    XLSX.utils.sheet_add_aoa(overviewSheet, detailBlocks, { origin: 0 });
-
-    let nextRow = detailBlocks.length;
-
-    XLSX.utils.sheet_add_aoa(overviewSheet, [[]], { origin: { r: nextRow, c: 0 } });
-    nextRow += 1;
-
-    XLSX.utils.sheet_add_aoa(overviewSheet, [['Übersicht']], { origin: { r: nextRow, c: 0 } });
-    nextRow += 1;
-
-    const overviewStartRow = nextRow;
-    XLSX.utils.sheet_add_aoa(overviewSheet, [overviewHeader, ...overviewRowValues], {
-      origin: { r: overviewStartRow, c: 0 }
+    trainerGroups.forEach(({ trainer, entries: trainerEntries }) => {
+      exportSingleTrainerWorkbook(trainer, trainerEntries, month, year, teams);
     });
-
-    nextRow += 1 + overviewRowValues.length;
-
-    const overviewDataRowStart = overviewStartRow + 1;
-    overviewRowValues.forEach((_, index) => {
-      // Neue Spalten für Stundensatz & Betrag mit Excel-Formel befüllen
-      const rowIndex = overviewDataRowStart + index;
-      const hoursCell = XLSX.utils.encode_cell({ r: rowIndex, c: 2 });
-      const rateCell = XLSX.utils.encode_cell({ r: rowIndex, c: 7 });
-      const amountCell = XLSX.utils.encode_cell({ r: rowIndex, c: 8 });
-      overviewSheet[rateCell] = { v: HOURLY_RATE, t: 'n', z: '0.00' };
-      overviewSheet[amountCell] = { f: `${hoursCell}*${HOURLY_RATE}`, t: 'n', z: '0.00' };
-    });
-
-    const today = new Date().toLocaleDateString('de-DE');
-    const signatureBlock = [
-      [],
-      ['Datum:', today],
-      ['__________________________', '', '__________________________'],
-      ['Unterschrift Abteilungsleitung', '', 'Unterschrift Trainer / Übungsleiter']
-    ];
-    XLSX.utils.sheet_add_aoa(overviewSheet, signatureBlock, { origin: { r: nextRow, c: 0 } });
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
-
-    XLSX.writeFile(workbook, `leistungsnachweis_${year}-${monthPart}.xlsx`);
     return;
   }
 
-  // Fallback ohne externe Bibliothek: HTML-Tabelle als Excel-kompatible Datei
-  const escapeCell = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const fallbackSignatureDate = new Date().toLocaleDateString('de-DE');
-  const overviewTable = [overviewHeader, ...overviewRowValues]
-    .map(
-      (row) => `<tr>${row.map((cell) => `<td>${escapeCell(cell)}</td>`).join('')}</tr>`
-    )
-    .join('');
-
-  const detailsHtml = trainerOrder
-    .map((trainerBlock) => {
-      const rows = trainerBlock.entries
-        .slice()
-        .sort(
-          (a, b) =>
-            new Date(a.date) - new Date(b.date) || parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)
-        )
-        .map((entry) => {
-          const teamName = teams.find((t) => t.id === entry.teamId)?.name || 'Unbekannt';
-          const cells = [
-            entry.date,
-            entry.startTime,
-            entry.endTime,
-            entry.durationMinutes,
-            formatDuration(entry.durationMinutes),
-            teamName,
-            entry.type,
-            entry.notes || ''
-          ];
-          return `<tr>${cells.map((cell) => `<td>${escapeCell(cell)}</td>`).join('')}</tr>`;
-        })
-        .join('');
-
-      const headerRow = `<tr>${detailsHeader.map((cell) => `<th>${escapeCell(cell)}</th>`).join('')}</tr>`;
-      return `<div style="margin-top:12px;"><strong>Trainer: ${escapeCell(
-        trainerBlock.trainerName
-      )} (Monat: ${escapeCell(monthPart)}/${escapeCell(String(year))})</strong><table>${headerRow}${rows}</table></div>`;
-    })
-    .join('');
-
-  const signatureBlockHtml = `<br><table><tr><td>Datum:</td><td>${escapeCell(fallbackSignatureDate)}</td></tr><tr><td>__________________________</td><td></td><td>__________________________</td></tr><tr><td>Unterschrift Abteilungsleitung</td><td></td><td>Unterschrift Trainer / Übungsleiter</td></tr></table>`;
-  const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>table{border-collapse:collapse;}td,th{border:1px solid #ccc;padding:4px;} div{margin-top:8px;}</style></head><body><h3>Details</h3>${detailsHtml}<br><h3>Übersicht</h3><table>${overviewTable}</table>${signatureBlockHtml}</body></html>`;
-  const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `leistungsnachweis_${year}-${monthPart}.xls`;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  trainerGroups.forEach(({ trainer, entries: trainerEntries }) => {
+    exportTrainerHtml(trainer, trainerEntries, month, year, teams);
+  });
 }
 
 function openModal(title, contentNode) {
