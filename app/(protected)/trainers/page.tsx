@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import type { Trainer } from '@/types';
 
@@ -8,6 +8,7 @@ export default function TrainersPage() {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [editingTrainer, setEditingTrainer] = useState<Trainer | null>(null);
   const [form, setForm] = useState({
     name: '',
@@ -23,8 +24,15 @@ export default function TrainersPage() {
   const fetchTrainers = async () => {
     setLoading(true);
     const { data, error } = await supabase.from('trainers').select('*').order('created_at', { ascending: false });
-    if (error) setError(error.message);
-    else setTrainers(data as Trainer[]);
+
+    if (error) {
+      console.error(error);
+      setError(error.message);
+    } else {
+      setError(null);
+      setTrainers(data as Trainer[]);
+    }
+
     setLoading(false);
   };
 
@@ -43,29 +51,37 @@ export default function TrainersPage() {
     setForm({ name: '', email: '', hourly_rate: '', is_active: true });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     if (!form.name.trim()) {
       setError('Name ist erforderlich');
       return;
     }
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      console.error(userError);
+      setError('Konnte angemeldeten Nutzer nicht ermitteln.');
+      return;
+    }
     const payload = {
       name: form.name,
       email: form.email || null,
       hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : null,
       is_active: form.is_active,
-      created_by: userData.user?.id ?? null
+      created_by: userData.user.id
     };
     const { error: upsertError } = editingTrainer
       ? await supabase.from('trainers').update(payload).eq('id', editingTrainer.id)
       : await supabase.from('trainers').insert(payload);
 
     if (upsertError) {
+      console.error(upsertError);
       setError(upsertError.message);
       return;
     }
+    setSuccess('Trainer wurde gespeichert.');
     resetForm();
     fetchTrainers();
   };
@@ -114,6 +130,7 @@ export default function TrainersPage() {
           </div>
         </div>
         {error && <p className="text-red-600 text-sm">{error}</p>}
+        {success && <p className="text-green-600 text-sm">{success}</p>}
         <div className="flex space-x-3">
           <button type="submit" className="bg-blue-600 text-white hover:bg-blue-700">
             {editingTrainer ? 'Aktualisieren' : 'Anlegen'}
