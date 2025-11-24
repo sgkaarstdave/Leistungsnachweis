@@ -43,6 +43,7 @@ const elements = {
   hourlyRateInfo: document.getElementById('hourly-rate-info'),
   entryNotes: document.getElementById('entry-notes'),
   entryFeedback: document.getElementById('entry-feedback'),
+  entrySubmitHint: document.getElementById('entry-submit-hint'),
   entrySubmit: document.querySelector('#entry-form button[type="submit"]'),
   durationDisplay: document.getElementById('duration-display'),
   costDisplay: document.getElementById('cost-display'),
@@ -407,16 +408,13 @@ function calculateDuration(start, end) {
 
 function updateTeamValidationState(showError = false) {
   const hasTeam = Boolean(elements.entryTeam.value);
-  const hasDate = Boolean(elements.entryDate.value);
-  const hasTrainer = Boolean(elements.entryTrainer.value);
-  const hasActivity = Boolean(elements.entryActivity.value);
-  const hasStart = Boolean(elements.startTime.value);
-  const hasEnd = Boolean(elements.endTime.value);
-  const isComplete = hasTeam && hasDate && hasTrainer && hasActivity && hasStart && hasEnd;
+  const isFormValid = getEntryFormValidity();
 
   if (elements.entrySubmit) {
-    elements.entrySubmit.disabled = !isComplete;
+    elements.entrySubmit.disabled = !isFormValid;
   }
+
+  toggleEntrySubmitHint(!isFormValid);
   toggleTeamValidationError(showError && !hasTeam);
   return hasTeam;
 }
@@ -424,6 +422,30 @@ function updateTeamValidationState(showError = false) {
 function toggleTeamValidationError(show) {
   elements.entryTeam.classList.toggle('field-error', show);
   elements.entryTeamHint?.classList.toggle('hidden', !show);
+}
+
+function toggleEntrySubmitHint(show) {
+  if (elements.entrySubmitHint) {
+    elements.entrySubmitHint.classList.toggle('hidden', !show);
+  }
+}
+
+function getEntryFormValidity() {
+  const selectedDate = elements.entryDate.value;
+  const selectedTeamId = elements.entryTeam.value;
+  const selectedTrainerId = elements.entryTrainer.value;
+  const activity = elements.entryActivity.value;
+  const startTime = elements.startTime.value;
+  const endTime = elements.endTime.value;
+
+  return (
+    !!selectedDate &&
+    !!selectedTeamId &&
+    !!selectedTrainerId &&
+    !!activity &&
+    !!startTime &&
+    !!endTime
+  );
 }
 
 async function loadTrainers() {
