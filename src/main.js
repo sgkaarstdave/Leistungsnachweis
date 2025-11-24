@@ -829,7 +829,7 @@ function renderTeamList() {
     );
     item
       .querySelector('[data-action="delete"]')
-      .addEventListener('click', () => handleDeleteTeam(team));
+      .addEventListener('click', () => deleteTeam(team.id));
 
     elements.teamList.appendChild(item);
   });
@@ -870,49 +870,40 @@ async function handleTeamToggle(team, isActive, toggleInput) {
   await loadEntries();
 }
 
-async function handleDeleteTeam(team) {
+async function deleteTeam(teamId) {
+  const team = state.teams.find((t) => t.id === teamId);
   const confirmation = confirm('Mannschaft wirklich löschen?');
   if (!confirmation) return;
 
-  const { count, error: countError } = await supabase
+  const { error: entryError } = await supabase
     .from('performance_entries')
-    .select('*', { count: 'exact', head: true })
-    .eq('team_id', team.id);
+    .delete()
+    .eq('team_id', teamId);
 
-  if (countError) {
-    console.error('Supabase error', countError);
-    setStatus('Konnte Mannschaft nicht löschen. Bitte später erneut versuchen.', 'error');
+  if (entryError) {
+    console.error('Supabase error', entryError);
+    const hasRelations =
+      entryError.code === '23503' || entryError.message?.toLowerCase().includes('foreign key');
+    const message = hasRelations
+      ? 'Mannschaft kann nicht gelöscht werden, da noch Einträge oder Verknüpfungen bestehen.'
+      : 'Konnte zugehörige Einträge nicht löschen. Bitte später erneut versuchen.';
+    setStatus(message, 'error');
     return;
   }
 
-  if (count > 0) {
-    setStatus('Mannschaft kann nicht gelöscht werden, da noch Einträge damit verknüpft sind.', 'error');
-    return;
-  }
-
-  const { error } = await supabase.from('teams').delete().eq('id', team.id);
+  const { error } = await supabase.from('teams').delete().eq('id', teamId);
 
   if (error) {
     console.error('Supabase error', error);
     const hasRelations = error.code === '23503' || error.message?.toLowerCase().includes('foreign key');
     const message = hasRelations
-      ? 'Mannschaft kann nicht gelöscht werden, da noch Einträge damit verknüpft sind.'
+      ? 'Mannschaft kann nicht gelöscht werden, da noch Einträge oder Verknüpfungen bestehen.'
       : 'Konnte Mannschaft nicht löschen. Bitte später erneut versuchen.';
     setStatus(message, 'error');
     return;
   }
 
-  setStatus('Mannschaft gelöscht.');
-
-  // Optimistisch den lokalen Status aktualisieren, falls das Nachladen fehlschlägt
-  state.teams = state.teams.filter((t) => t.id !== team.id);
-  populateTeamSelect();
-  renderTeamList();
-
-  // Falls gerade dieselbe Mannschaft bearbeitet wurde, Formular zurücksetzen
-  if (state.editingTeamId === team.id) {
-    resetTeamForm();
-  }
+  setStatus(team ? `${team.name} gelöscht.` : 'Mannschaft gelöscht.');
 
   await loadTeams();
   await loadEntries();
