@@ -77,14 +77,27 @@ const elements = {
 init();
 
 async function init() {
+  disableServiceWorkers();
   setDefaultDates();
   setHourlyRateInfo();
   bindEvents();
   updateTeamValidationState();
   renderScheduleRows();
   await restoreSession();
+}
+
+function disableServiceWorkers() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => {
+        for (const reg of registrations) {
+          reg.unregister();
+        }
+      })
+      .catch((error) => {
+        console.warn('Konnte Service Worker nicht deregistrieren', error);
+      });
   }
 }
 
