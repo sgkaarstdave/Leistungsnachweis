@@ -403,6 +403,10 @@ button {
   font-weight: 600;
 }
 
+button:disabled {
+  cursor: not-allowed;
+}
+
 button:active {
   transform: translateY(1px);
 }
@@ -411,6 +415,18 @@ button:active {
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   color: #fff;
   box-shadow: 0 10px 30px rgba(59, 130, 246, 0.35);
+}
+
+.primary:disabled,
+.primary.is-disabled {
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.35),
+    rgba(37, 99, 235, 0.4)
+  );
+  color: rgba(255, 255, 255, 0.7);
+  box-shadow: none;
+  transform: none;
 }
 
 .secondary {

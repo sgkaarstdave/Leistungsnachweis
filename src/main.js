@@ -412,6 +412,7 @@ function updateTeamValidationState(showError = false) {
 
   if (elements.entrySubmit) {
     elements.entrySubmit.disabled = !isFormValid;
+    elements.entrySubmit.classList.toggle('is-disabled', !isFormValid);
   }
 
   toggleEntrySubmitHint(!isFormValid);
