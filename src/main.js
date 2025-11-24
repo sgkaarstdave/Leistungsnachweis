@@ -244,6 +244,26 @@ async function handleEntrySubmit(event) {
     return;
   }
 
+  const { hasConflict, error: conflictError } = await checkTimeConflict(payload);
+  if (conflictError) {
+    console.error('Supabase error', conflictError);
+    showFeedback(
+      elements.entryFeedback,
+      'Konnte Zeitüberschneidungen nicht prüfen: ' + conflictError.message,
+      true
+    );
+    return;
+  }
+
+  if (hasConflict) {
+    showFeedback(
+      elements.entryFeedback,
+      'Für dieses Datum existiert bereits ein Eintrag mit überschneidenden Zeiten.',
+      true
+    );
+    return;
+  }
+
   elements.entryForm.classList.add('loading');
   const { error } = await supabase.from('performance_entries').insert({
     ...payload,
@@ -328,6 +348,22 @@ async function checkDuplicateEntry(payload) {
   return {
     error,
     isDuplicate: typeof count === 'number' ? count > 0 : false,
+  };
+}
+
+async function checkTimeConflict(payload) {
+  const { date, start_time: startTime, end_time: endTime } = payload;
+  const { error, count } = await supabase
+    .from('performance_entries')
+    .select('id', { count: 'exact', head: true })
+    .eq('date', date)
+    .lt('start_time', endTime)
+    .gt('end_time', startTime)
+    .limit(1);
+
+  return {
+    error,
+    hasConflict: typeof count === 'number' ? count > 0 : false,
   };
 }
 
