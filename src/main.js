@@ -903,6 +903,17 @@ async function handleDeleteTeam(team) {
   }
 
   setStatus('Mannschaft gelöscht.');
+
+  // Optimistisch den lokalen Status aktualisieren, falls das Nachladen fehlschlägt
+  state.teams = state.teams.filter((t) => t.id !== team.id);
+  populateTeamSelect();
+  renderTeamList();
+
+  // Falls gerade dieselbe Mannschaft bearbeitet wurde, Formular zurücksetzen
+  if (state.editingTeamId === team.id) {
+    resetTeamForm();
+  }
+
   await loadTeams();
   await loadEntries();
 }
