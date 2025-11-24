@@ -265,6 +265,15 @@ textarea {
   resize: vertical;
 }
 
+.field-error {
+  border-color: var(--danger) !important;
+}
+
+.field-hint {
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
 .checkbox {
   display: flex;
   align-items: center;
