@@ -14,6 +14,7 @@ const state = {
   authMode: 'login',
   editingTrainerId: null,
   editingTeamId: null,
+  editingTeamActive: true,
 };
 
 const elements = {
@@ -65,7 +66,6 @@ const elements = {
   teamTrainer: document.getElementById('team-trainer'),
   teamScheduleList: document.getElementById('team-schedule-list'),
   addTeamSlot: document.getElementById('add-team-slot'),
-  teamActive: document.getElementById('team-active'),
   teamSubmit: document.getElementById('team-submit'),
   teamReset: document.getElementById('team-reset'),
   teamFeedback: document.getElementById('team-feedback'),
@@ -459,6 +459,7 @@ function renderScheduleRows(schedule = []) {
 function addScheduleRow(slot = {}) {
   const row = document.createElement('div');
   row.className = 'schedule-row';
+  row.dataset.isActive = slot.is_active === false ? 'false' : 'true';
 
   const dayInput = document.createElement('input');
   dayInput.type = 'text';
@@ -476,16 +477,6 @@ function addScheduleRow(slot = {}) {
   endInput.value = slot.end?.slice(0, 5) || '';
   endInput.className = 'team-end';
 
-  const activeLabel = document.createElement('label');
-  activeLabel.className = 'checkbox tight schedule-active';
-  const activeInput = document.createElement('input');
-  activeInput.type = 'checkbox';
-  activeInput.checked = slot.is_active !== false;
-  activeInput.className = 'team-active-toggle';
-  const activeText = document.createElement('span');
-  activeText.textContent = 'Aktiv';
-  activeLabel.append(activeInput, activeText);
-
   const removeBtn = document.createElement('button');
   removeBtn.type = 'button';
   removeBtn.className = 'ghost';
@@ -497,7 +488,7 @@ function addScheduleRow(slot = {}) {
     }
   });
 
-  row.append(dayInput, startInput, endInput, activeLabel, removeBtn);
+  row.append(dayInput, startInput, endInput, removeBtn);
   elements.teamScheduleList.appendChild(row);
 }
 
@@ -508,7 +499,7 @@ function collectTrainingSchedule() {
       const day = row.querySelector('.team-day')?.value.trim();
       const start = row.querySelector('.team-start')?.value || '';
       const end = row.querySelector('.team-end')?.value || '';
-      const is_active = row.querySelector('.team-active-toggle')?.checked ?? true;
+      const is_active = row.dataset.isActive !== 'false';
       return { day, start, end, is_active };
     })
     .filter((slot) => slot.day || slot.start || slot.end);
@@ -607,6 +598,7 @@ function renderTeamList() {
 
   state.teams.forEach((team) => {
     const trainer = state.trainers.find((t) => t.id === team.trainer_id);
+    const isActive = team.is_active !== false;
     const item = document.createElement('div');
     item.className = 'trainer-item';
     const schedule = formatSchedule(team.training_schedule);
@@ -618,18 +610,19 @@ function renderTeamList() {
         <p class="muted small">${schedule}</p>
       </div>
       <div class="trainer-meta">
-        <span class="pill ${team.is_active === false ? 'pill-danger' : 'pill-success'}">${
-      team.is_active === false ? 'Inaktiv' : 'Aktiv'
-    }</span>
+        <label class="toggle-switch" data-id="${team.id}">
+          <input type="checkbox" data-action="toggle" ${isActive ? 'checked' : ''} />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span class="switch-label">${isActive ? 'Aktiv' : 'Inaktiv'}</span>
+        </label>
         <button class="ghost" data-action="edit" data-id="${team.id}">Bearbeiten</button>
-        <button class="secondary" data-action="toggle" data-id="${team.id}">${
-      team.is_active === false ? 'Aktivieren' : 'Deaktivieren'
-    }</button>
       </div>
     `;
 
     item.querySelector('[data-action="edit"]').addEventListener('click', () => startEditTeam(team));
-    item.querySelector('[data-action="toggle"]').addEventListener('click', () => toggleTeam(team));
+    item
+      .querySelector('[data-action="toggle"]')
+      .addEventListener('change', (event) => handleTeamToggle(team, event.target.checked));
 
     elements.teamList.appendChild(item);
   });
@@ -637,25 +630,29 @@ function renderTeamList() {
 
 function startEditTeam(team) {
   state.editingTeamId = team.id;
+  state.editingTeamActive = team.is_active !== false;
   elements.teamId.value = team.id;
   elements.teamName.value = team.name || '';
   elements.teamTrainer.value = team.trainer_id || '';
   renderScheduleRows(team.training_schedule);
-  elements.teamActive.checked = team.is_active !== false;
   elements.teamSubmit.textContent = 'Mannschaft aktualisieren';
   showFeedback(elements.teamFeedback, `Bearbeitung von ${team.name}`);
 }
 
-async function toggleTeam(team) {
+async function handleTeamToggle(team, isActive) {
   const { error } = await supabase
     .from('teams')
-    .update({ is_active: team.is_active === false, updated_at: new Date().toISOString() })
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
     .eq('id', team.id);
 
   if (error) {
     console.error('Supabase error', error);
     setStatus('Konnte Status nicht ändern: ' + error.message, 'error');
     return;
+  }
+
+  if (state.editingTeamId === team.id) {
+    state.editingTeamActive = isActive;
   }
 
   setStatus(`Status für ${team.name} angepasst.`);
@@ -677,7 +674,7 @@ async function handleTeamSubmit(event) {
     default_day: primarySlot.day || null,
     default_start_time: primarySlot.start || null,
     default_end_time: primarySlot.end || null,
-    is_active: elements.teamActive.checked,
+    is_active: state.editingTeamId ? state.editingTeamActive : true,
     created_by: state.session.user.id,
   };
 
@@ -713,9 +710,9 @@ async function handleTeamSubmit(event) {
 
 function resetTeamForm() {
   state.editingTeamId = null;
+  state.editingTeamActive = true;
   elements.teamId.value = '';
   elements.teamForm.reset();
-  elements.teamActive.checked = true;
   elements.teamSubmit.textContent = 'Mannschaft speichern';
   renderScheduleRows();
   showFeedback(elements.teamFeedback, '');
