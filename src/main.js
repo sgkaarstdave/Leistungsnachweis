@@ -113,14 +113,24 @@ function bindEvents() {
 
   elements.entryForm.addEventListener('submit', handleEntrySubmit);
   [elements.startTime, elements.endTime].forEach((el) =>
-    el.addEventListener('input', updateComputedFields)
+    el.addEventListener('input', () => {
+      updateComputedFields();
+      updateTeamValidationState();
+    })
   );
   elements.entryTeam.addEventListener('change', () => {
     applyTeamDefaults();
     updateTeamValidationState();
   });
-  elements.entryTrainer.addEventListener('change', updateComputedFields);
-  elements.entryDate.addEventListener('change', applyTeamDefaults);
+  elements.entryTrainer.addEventListener('change', () => {
+    updateComputedFields();
+    updateTeamValidationState();
+  });
+  elements.entryDate.addEventListener('change', () => {
+    applyTeamDefaults();
+    updateTeamValidationState();
+  });
+  elements.entryActivity.addEventListener('change', () => updateTeamValidationState());
 
   elements.filterMonth.addEventListener('change', handleFilterChange);
   elements.filterTrainer.addEventListener('change', handleFilterChange);
@@ -384,8 +394,15 @@ function calculateDuration(start, end) {
 
 function updateTeamValidationState(showError = false) {
   const hasTeam = Boolean(elements.entryTeam.value);
+  const hasDate = Boolean(elements.entryDate.value);
+  const hasTrainer = Boolean(elements.entryTrainer.value);
+  const hasActivity = Boolean(elements.entryActivity.value);
+  const hasStart = Boolean(elements.startTime.value);
+  const hasEnd = Boolean(elements.endTime.value);
+  const isComplete = hasTeam && hasDate && hasTrainer && hasActivity && hasStart && hasEnd;
+
   if (elements.entrySubmit) {
-    elements.entrySubmit.disabled = !hasTeam;
+    elements.entrySubmit.disabled = !isComplete;
   }
   toggleTeamValidationError(showError && !hasTeam);
   return hasTeam;
