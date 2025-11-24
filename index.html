@@ -75,10 +75,11 @@
               <input type="date" id="entry-date" required>
             </label>
             <label>
-              <span>Mannschaft</span>
-              <select id="entry-team">
-                <option value="">Keine Mannschaft</option>
+              <span>Mannschaft *</span>
+              <select id="entry-team" required>
+                <option value="">Bitte Mannschaft wählen</option>
               </select>
+              <span id="entry-team-hint" class="field-hint hidden">Bitte eine Mannschaft auswählen.</span>
             </label>
             <label>
               <span>Trainer</span>

@@ -35,6 +35,7 @@ const elements = {
   entryForm: document.getElementById('entry-form'),
   entryDate: document.getElementById('entry-date'),
   entryTeam: document.getElementById('entry-team'),
+  entryTeamHint: document.getElementById('entry-team-hint'),
   entryTrainer: document.getElementById('entry-trainer'),
   entryActivity: document.getElementById('entry-activity'),
   startTime: document.getElementById('start-time'),
@@ -42,6 +43,7 @@ const elements = {
   hourlyRateInfo: document.getElementById('hourly-rate-info'),
   entryNotes: document.getElementById('entry-notes'),
   entryFeedback: document.getElementById('entry-feedback'),
+  entrySubmit: document.querySelector('#entry-form button[type="submit"]'),
   durationDisplay: document.getElementById('duration-display'),
   costDisplay: document.getElementById('cost-display'),
   filterMonth: document.getElementById('filter-month'),
@@ -78,6 +80,7 @@ async function init() {
   setDefaultDates();
   setHourlyRateInfo();
   bindEvents();
+  updateTeamValidationState();
   renderScheduleRows();
   await restoreSession();
   if ('serviceWorker' in navigator) {
@@ -112,7 +115,10 @@ function bindEvents() {
   [elements.startTime, elements.endTime].forEach((el) =>
     el.addEventListener('input', updateComputedFields)
   );
-  elements.entryTeam.addEventListener('change', applyTeamDefaults);
+  elements.entryTeam.addEventListener('change', () => {
+    applyTeamDefaults();
+    updateTeamValidationState();
+  });
   elements.entryTrainer.addEventListener('change', updateComputedFields);
   elements.entryDate.addEventListener('change', applyTeamDefaults);
 
@@ -259,6 +265,7 @@ async function handleEntrySubmit(event) {
   elements.entryForm.reset();
   setDefaultDates(true);
   elements.entryTeam.value = '';
+  updateTeamValidationState();
   updateComputedFields();
   await loadEntries();
 }
@@ -269,6 +276,12 @@ function buildEntryPayload() {
   const trainerId = elements.entryTrainer.value;
   const start = elements.startTime.value;
   const end = elements.endTime.value;
+
+  const hasTeam = updateTeamValidationState(true);
+  if (!hasTeam) {
+    showFeedback(elements.entryFeedback, 'Bitte eine Mannschaft auswählen.', true);
+    return null;
+  }
 
   if (!date || !trainerId || !start || !end) {
     showFeedback(elements.entryFeedback, 'Bitte alle Pflichtfelder ausfüllen.', true);
@@ -285,7 +298,7 @@ function buildEntryPayload() {
 
   return {
     trainer_id: trainerId,
-    team_id: teamId || null,
+    team_id: teamId,
     date,
     start_time: start,
     end_time: end,
@@ -299,6 +312,9 @@ function buildEntryPayload() {
 
 async function checkDuplicateEntry(payload) {
   const { trainer_id: trainerId, team_id: teamId, date } = payload;
+  if (!teamId) {
+    return { error: null, isDuplicate: false };
+  }
   let query = supabase
     .from('performance_entries')
     .select('id', { count: 'exact', head: true })
@@ -322,6 +338,20 @@ function calculateDuration(start, end) {
   const endMinutes = endH * 60 + endM;
   const diff = endMinutes - startMinutes;
   return diff > 0 ? diff : 0;
+}
+
+function updateTeamValidationState(showError = false) {
+  const hasTeam = Boolean(elements.entryTeam.value);
+  if (elements.entrySubmit) {
+    elements.entrySubmit.disabled = !hasTeam;
+  }
+  toggleTeamValidationError(showError && !hasTeam);
+  return hasTeam;
+}
+
+function toggleTeamValidationError(show) {
+  elements.entryTeam.classList.toggle('field-error', show);
+  elements.entryTeamHint?.classList.toggle('hidden', !show);
 }
 
 async function loadTrainers() {
@@ -618,7 +648,9 @@ function populateTeamSelect() {
   elements.entryTeam.innerHTML = '';
   const emptyOption = document.createElement('option');
   emptyOption.value = '';
-  emptyOption.textContent = 'Keine Mannschaft';
+  emptyOption.textContent = 'Bitte Mannschaft wählen';
+  emptyOption.disabled = true;
+  emptyOption.selected = true;
   elements.entryTeam.appendChild(emptyOption);
 
   const activeTeams = state.teams.filter((team) => team.is_active !== false);
@@ -629,6 +661,7 @@ function populateTeamSelect() {
     option.textContent = `${team.name}${trainer ? ` (Trainer: ${trainer.name})` : ''}`;
     elements.entryTeam.appendChild(option);
   });
+  updateTeamValidationState();
 }
 
 function renderTeamList() {
