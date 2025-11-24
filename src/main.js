@@ -221,6 +221,12 @@ async function handleEntrySubmit(event) {
   event.preventDefault();
   if (!state.session) return;
 
+  const hasTeam = updateTeamValidationState(true);
+  if (!hasTeam) {
+    showFeedback(elements.entryFeedback, 'Bitte eine Mannschaft auswählen.', true);
+    return;
+  }
+
   const payload = buildEntryPayload();
   if (!payload) return;
 
