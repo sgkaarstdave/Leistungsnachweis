@@ -218,6 +218,26 @@ async function handleEntrySubmit(event) {
   const payload = buildEntryPayload();
   if (!payload) return;
 
+  const { isDuplicate, error: duplicateError } = await checkDuplicateEntry(payload);
+  if (duplicateError) {
+    console.error('Supabase error', duplicateError);
+    showFeedback(
+      elements.entryFeedback,
+      'Konnte bestehende Einträge nicht prüfen: ' + duplicateError.message,
+      true
+    );
+    return;
+  }
+
+  if (isDuplicate) {
+    showFeedback(
+      elements.entryFeedback,
+      'Für diese Kombination aus Trainer, Mannschaft und Datum existiert bereits ein Eintrag.',
+      true
+    );
+    return;
+  }
+
   elements.entryForm.classList.add('loading');
   const { error } = await supabase.from('performance_entries').insert({
     ...payload,
@@ -227,7 +247,11 @@ async function handleEntrySubmit(event) {
 
   if (error) {
     console.error('Supabase error', error);
-    showFeedback(elements.entryFeedback, error.message, true);
+    const duplicateViolation = isDuplicateEntryError(error);
+    const message = duplicateViolation
+      ? 'Für diese Kombination aus Trainer, Mannschaft und Datum existiert bereits ein Eintrag.'
+      : error.message;
+    showFeedback(elements.entryFeedback, message, true);
     return;
   }
 
@@ -270,6 +294,24 @@ function buildEntryPayload() {
     notes: elements.entryNotes.value.trim(),
     hourly_rate: DEFAULT_HOURLY_RATE,
     cost,
+  };
+}
+
+async function checkDuplicateEntry(payload) {
+  const { trainer_id: trainerId, team_id: teamId, date } = payload;
+  let query = supabase
+    .from('performance_entries')
+    .select('id', { count: 'exact', head: true })
+    .eq('trainer_id', trainerId)
+    .eq('date', date)
+    .limit(1);
+
+  query = teamId ? query.eq('team_id', teamId) : query.is('team_id', null);
+
+  const { error, count } = await query;
+  return {
+    error,
+    isDuplicate: typeof count === 'number' ? count > 0 : false,
   };
 }
 
@@ -892,6 +934,13 @@ function monthRange(monthValue) {
   const endDate = new Date(year, month, 0);
   const end = endDate.toISOString().slice(0, 10);
   return { start, end };
+}
+
+function isDuplicateEntryError(error) {
+  return (
+    error?.code === '23505' ||
+    error?.message?.includes('performance_entries_trainer_team_date_unique')
+  );
 }
 
 function showFeedback(element, message, isError = false) {
