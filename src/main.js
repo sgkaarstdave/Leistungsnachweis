@@ -58,7 +58,6 @@ const elements = {
   trainerId: document.getElementById('trainer-id'),
   trainerName: document.getElementById('trainer-name'),
   trainerEmail: document.getElementById('trainer-email'),
-  trainerActive: document.getElementById('trainer-active'),
   trainerSubmit: document.getElementById('trainer-submit'),
   trainerReset: document.getElementById('trainer-reset'),
   trainerFeedback: document.getElementById('trainer-feedback'),
@@ -516,25 +515,32 @@ function renderTrainerList() {
   state.trainers.forEach((trainer) => {
     const item = document.createElement('div');
     item.className = 'trainer-item';
+    const isActive = trainer.is_active !== false;
     item.innerHTML = `
       <div>
         <strong>${trainer.name}</strong>
         <p class="muted small">${trainer.email || 'Keine E-Mail hinterlegt'}</p>
       </div>
       <div class="trainer-meta">
-        <span class="pill ${trainer.is_active === false ? 'pill-danger' : 'pill-success'}">${
-      trainer.is_active === false ? 'Inaktiv' : 'Aktiv'
-    }</span>
         <span class="pill">${formatCurrency(DEFAULT_HOURLY_RATE)} / Std.</span>
+        <label class="toggle-switch" data-id="${trainer.id}">
+          <input type="checkbox" data-action="toggle" ${isActive ? 'checked' : ''} />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span class="switch-label">Aktiv</span>
+        </label>
         <button class="ghost" data-action="edit" data-id="${trainer.id}">Bearbeiten</button>
-        <button class="secondary" data-action="toggle" data-id="${trainer.id}">${
-      trainer.is_active === false ? 'Aktivieren' : 'Deaktivieren'
-    }</button>
+        <button class="danger" data-action="delete" data-id="${trainer.id}">Löschen</button>
       </div>
     `;
 
     item.querySelector('[data-action="edit"]').addEventListener('click', () => startEditTrainer(trainer));
-    item.querySelector('[data-action="toggle"]').addEventListener('click', () => toggleTrainer(trainer));
+    const toggleInput = item.querySelector('[data-action="toggle"]');
+    toggleInput.addEventListener('change', (event) =>
+      toggleTrainer(trainer, event.target.checked, toggleInput)
+    );
+    item
+      .querySelector('[data-action="delete"]')
+      .addEventListener('click', () => handleDeleteTrainer(trainer));
 
     elements.trainerList.appendChild(item);
   });
@@ -545,23 +551,47 @@ function startEditTrainer(trainer) {
   elements.trainerId.value = trainer.id;
   elements.trainerName.value = trainer.name || '';
   elements.trainerEmail.value = trainer.email || '';
-  elements.trainerActive.checked = trainer.is_active !== false;
   elements.trainerSubmit.textContent = 'Trainer aktualisieren';
   showFeedback(elements.trainerFeedback, `Bearbeitung von ${trainer.name}`);
 }
 
-async function toggleTrainer(trainer) {
+async function toggleTrainer(trainer, isActive, toggleInput) {
   const { error } = await supabase
     .from('trainers')
-    .update({ is_active: trainer.is_active === false, updated_at: new Date().toISOString() })
+    .update({ is_active: isActive })
     .eq('id', trainer.id);
 
   if (error) {
     console.error('Supabase error', error);
-    setStatus('Konnte Status nicht ändern: ' + error.message, 'error');
+    setStatus('Konnte Status nicht ändern. Bitte später erneut versuchen.', 'error');
+    if (toggleInput) {
+      toggleInput.checked = !isActive;
+    }
     return;
   }
   setStatus(`Status für ${trainer.name} angepasst.`);
+  await loadTrainers();
+  await loadTeams();
+  await loadEntries();
+}
+
+async function handleDeleteTrainer(trainer) {
+  const confirmation = confirm('Trainer wirklich löschen?');
+  if (!confirmation) return;
+
+  const { error } = await supabase.from('trainers').delete().eq('id', trainer.id);
+
+  if (error) {
+    console.error('Supabase error', error);
+    const hasRelations = error.code === '23503' || error.message?.toLowerCase().includes('foreign key');
+    const message = hasRelations
+      ? 'Trainer kann nicht gelöscht werden, da noch Einträge oder Mannschaften damit verknüpft sind.'
+      : 'Konnte Trainer nicht löschen. Bitte später erneut versuchen.';
+    setStatus(message, 'error');
+    return;
+  }
+
+  setStatus('Trainer gelöscht.');
   await loadTrainers();
   await loadTeams();
   await loadEntries();
@@ -575,9 +605,12 @@ async function handleTrainerSubmit(event) {
     name: elements.trainerName.value.trim(),
     email: elements.trainerEmail.value.trim() || null,
     hourly_rate: DEFAULT_HOURLY_RATE,
-    is_active: elements.trainerActive.checked,
-    created_by: state.session.user.id,
   };
+
+  if (!state.editingTrainerId) {
+    payload.is_active = true;
+    payload.created_by = state.session.user.id;
+  }
 
   if (!payload.name) {
     showFeedback(elements.trainerFeedback, 'Bitte Name angeben.', true);
@@ -612,7 +645,6 @@ function resetTrainerForm() {
   state.editingTrainerId = null;
   elements.trainerId.value = '';
   elements.trainerForm.reset();
-  elements.trainerActive.checked = true;
   elements.trainerSubmit.textContent = 'Trainer speichern';
   showFeedback(elements.trainerFeedback, '');
 }
@@ -783,16 +815,21 @@ function renderTeamList() {
         <label class="toggle-switch" data-id="${team.id}">
           <input type="checkbox" data-action="toggle" ${isActive ? 'checked' : ''} />
           <span class="switch-track"><span class="switch-thumb"></span></span>
-          <span class="switch-label">${isActive ? 'Aktiv' : 'Inaktiv'}</span>
+          <span class="switch-label">Aktiv</span>
         </label>
         <button class="ghost" data-action="edit" data-id="${team.id}">Bearbeiten</button>
+        <button class="danger" data-action="delete" data-id="${team.id}">Löschen</button>
       </div>
     `;
 
     item.querySelector('[data-action="edit"]').addEventListener('click', () => startEditTeam(team));
+    const toggleInput = item.querySelector('[data-action="toggle"]');
+    toggleInput.addEventListener('change', (event) =>
+      handleTeamToggle(team, event.target.checked, toggleInput)
+    );
     item
-      .querySelector('[data-action="toggle"]')
-      .addEventListener('change', (event) => handleTeamToggle(team, event.target.checked));
+      .querySelector('[data-action="delete"]')
+      .addEventListener('click', () => handleDeleteTeam(team));
 
     elements.teamList.appendChild(item);
   });
@@ -809,15 +846,18 @@ function startEditTeam(team) {
   showFeedback(elements.teamFeedback, `Bearbeitung von ${team.name}`);
 }
 
-async function handleTeamToggle(team, isActive) {
+async function handleTeamToggle(team, isActive, toggleInput) {
   const { error } = await supabase
     .from('teams')
-    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .update({ is_active: isActive })
     .eq('id', team.id);
 
   if (error) {
     console.error('Supabase error', error);
     setStatus('Konnte Status nicht ändern: ' + error.message, 'error');
+    if (toggleInput) {
+      toggleInput.checked = !isActive;
+    }
     return;
   }
 
@@ -826,6 +866,43 @@ async function handleTeamToggle(team, isActive) {
   }
 
   setStatus(`Status für ${team.name} angepasst.`);
+  await loadTeams();
+  await loadEntries();
+}
+
+async function handleDeleteTeam(team) {
+  const confirmation = confirm('Mannschaft wirklich löschen?');
+  if (!confirmation) return;
+
+  const { count, error: countError } = await supabase
+    .from('performance_entries')
+    .select('*', { count: 'exact', head: true })
+    .eq('team_id', team.id);
+
+  if (countError) {
+    console.error('Supabase error', countError);
+    setStatus('Konnte Mannschaft nicht löschen. Bitte später erneut versuchen.', 'error');
+    return;
+  }
+
+  if (count > 0) {
+    setStatus('Mannschaft kann nicht gelöscht werden, da noch Einträge damit verknüpft sind.', 'error');
+    return;
+  }
+
+  const { error } = await supabase.from('teams').delete().eq('id', team.id);
+
+  if (error) {
+    console.error('Supabase error', error);
+    const hasRelations = error.code === '23503' || error.message?.toLowerCase().includes('foreign key');
+    const message = hasRelations
+      ? 'Mannschaft kann nicht gelöscht werden, da noch Einträge damit verknüpft sind.'
+      : 'Konnte Mannschaft nicht löschen. Bitte später erneut versuchen.';
+    setStatus(message, 'error');
+    return;
+  }
+
+  setStatus('Mannschaft gelöscht.');
   await loadTeams();
   await loadEntries();
 }
@@ -857,7 +934,7 @@ async function handleTeamSubmit(event) {
   const query = state.editingTeamId
     ? supabase
         .from('teams')
-        .update({ ...payload, updated_at: new Date().toISOString() })
+        .update(payload)
         .eq('id', state.editingTeamId)
     : supabase.from('teams').insert(payload);
 
