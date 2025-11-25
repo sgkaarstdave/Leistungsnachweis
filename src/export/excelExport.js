@@ -1,4 +1,5 @@
 import ExcelJS from 'https://esm.sh/exceljs@4';
+import JSZip from 'https://esm.sh/jszip@3.10.1';
 
 export async function exportToExcel({ supabase, filters }) {
   const query = buildQuery(supabase, filters);
@@ -14,83 +15,100 @@ export async function exportToExcel({ supabase, filters }) {
   }
 
   const grouped = groupByTrainer(entries);
+  const trainerNames = Object.keys(grouped);
+  const multipleTrainers = trainerNames.length > 1;
   let exportedFiles = 0;
+  const files = [];
 
-  for (const [trainerName, trainerEntries] of Object.entries(grouped)) {
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet(trainerName || 'Trainer');
-
-    sheet.columns = [
-      { key: 'date', width: 16 },
-      { key: 'start', width: 10 },
-      { key: 'end', width: 10 },
-      { key: 'duration', width: 16 },
-      { key: 'trainer', width: 24 },
-      { key: 'team', width: 24 },
-      { key: 'activity', width: 18 },
-      { key: 'cost', width: 12 },
-      { key: 'notes', width: 32 },
-    ];
-
-    addTitleRow(sheet, trainerEntries, filters?.month, trainerName);
-    const headerRow = sheet.addRow([
-      'Datum',
-      'Start',
-      'Ende',
-      'Dauer (Minuten)',
-      'Trainer',
-      'Mannschaft',
-      'Aktivität',
-      'Kosten',
-      'Notizen',
-    ]);
-    styleHeaderRow(sheet, headerRow);
-
-    trainerEntries.forEach((entry) => {
-      sheet.addRow({
-        date: toDate(entry.date),
-        start: toExcelTime(entry.start_time),
-        end: toExcelTime(entry.end_time),
-        duration: toNumber(entry.duration_minutes),
-        trainer: entry.trainers?.name || 'Unbekannter Trainer',
-        team: entry.teams?.name || '–',
-        activity: entry.activity || '',
-        cost: toNumber(entry.cost),
-        notes: entry.notes || '',
-      });
-    });
-
-    applyColumnFormatting(sheet);
-
-    const { totalHours, totalCost } = calculateTotals(trainerEntries);
-
-    const hoursRow = sheet.addRow(['Gesamtdauer (Stunden)', totalHours]);
-    styleSummaryRow(hoursRow, '0.00');
-
-    const costRow = sheet.addRow(['Gesamtkosten', totalCost]);
-    styleSummaryRow(costRow, '#,##0.00 [$€-407]');
-
-    sheet.addRow([]);
-
-    const dateRow = sheet.addRow(['Datum:', '', '', '']);
-    styleSignatureRow(sheet, dateRow, 'B');
-
-    sheet.addRow([]);
-
-    const signatureRow1 = sheet.addRow(['Unterschrift:', '', '', '']);
-    styleSignatureRow(sheet, signatureRow1, 'B');
-
-    const signatureRow2 = sheet.addRow(['Unterschrift:', '', '', '']);
-    styleSignatureRow(sheet, signatureRow2, 'B');
-
-    autoSizeColumns(sheet);
-
-    const buffer = await workbook.xlsx.writeBuffer();
-    downloadBuffer(buffer, trainerName || 'trainer', filters?.month);
+  for (const trainerName of trainerNames) {
+    const trainerEntries = grouped[trainerName];
+    const buffer = await buildWorkbookBuffer(trainerName, trainerEntries, filters?.month);
     exportedFiles += 1;
+
+    if (multipleTrainers) {
+      files.push({ trainerName, buffer });
+    } else {
+      downloadExcelBuffer(buffer, trainerName || 'trainer', filters?.month);
+    }
+  }
+
+  if (multipleTrainers) {
+    await downloadZip(files, filters?.month);
   }
 
   return { exportedFiles, totalEntries: entries.length };
+}
+
+async function buildWorkbookBuffer(trainerName, trainerEntries, month) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet(trainerName || 'Trainer');
+
+  sheet.columns = [
+    { key: 'date', width: 16 },
+    { key: 'start', width: 10 },
+    { key: 'end', width: 10 },
+    { key: 'duration', width: 16 },
+    { key: 'trainer', width: 24 },
+    { key: 'team', width: 24 },
+    { key: 'activity', width: 18 },
+    { key: 'cost', width: 12 },
+    { key: 'notes', width: 32 },
+  ];
+
+  addTitleRow(sheet, trainerEntries, month, trainerName);
+  const headerRow = sheet.addRow([
+    'Datum',
+    'Start',
+    'Ende',
+    'Dauer (Minuten)',
+    'Trainer',
+    'Mannschaft',
+    'Aktivität',
+    'Kosten',
+    'Notizen',
+  ]);
+  styleHeaderRow(sheet, headerRow);
+
+  trainerEntries.forEach((entry) => {
+    sheet.addRow({
+      date: toDate(entry.date),
+      start: toExcelTime(entry.start_time),
+      end: toExcelTime(entry.end_time),
+      duration: toNumber(entry.duration_minutes),
+      trainer: entry.trainers?.name || 'Unbekannter Trainer',
+      team: entry.teams?.name || '–',
+      activity: entry.activity || '',
+      cost: toNumber(entry.cost),
+      notes: entry.notes || '',
+    });
+  });
+
+  applyColumnFormatting(sheet);
+
+  const { totalHours, totalCost } = calculateTotals(trainerEntries);
+
+  const hoursRow = sheet.addRow(['Gesamtdauer (Stunden)', totalHours]);
+  styleSummaryRow(hoursRow, '0.00');
+
+  const costRow = sheet.addRow(['Gesamtkosten', totalCost]);
+  styleSummaryRow(costRow, '#,##0.00 [$€-407]');
+
+  sheet.addRow([]);
+
+  const dateRow = sheet.addRow(['Datum:', '', '', '']);
+  styleSignatureRow(sheet, dateRow, 'B');
+
+  sheet.addRow([]);
+
+  const signatureRow1 = sheet.addRow(['Unterschrift:', '', '', '']);
+  styleSignatureRow(sheet, signatureRow1, 'B');
+
+  const signatureRow2 = sheet.addRow(['Unterschrift:', '', '', '']);
+  styleSignatureRow(sheet, signatureRow2, 'B');
+
+  autoSizeColumns(sheet);
+
+  return workbook.xlsx.writeBuffer();
 }
 
 function buildQuery(supabase, filters) {
@@ -269,14 +287,34 @@ function autoSizeColumns(sheet) {
   });
 }
 
-function downloadBuffer(buffer, trainerName, month) {
+function downloadExcelBuffer(buffer, trainerName, month) {
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
+  downloadBlob(blob, buildFileName(trainerName, month));
+}
+
+async function downloadZip(files, month) {
+  const zip = new JSZip();
+
+  files.forEach(({ trainerName, buffer }) => {
+    zip.file(buildFileName(trainerName, month), buffer);
+  });
+
+  const content = await zip.generateAsync({ type: 'blob' });
+  downloadBlob(content, buildZipFileName(month));
+}
+
+function buildZipFileName(month) {
+  const monthPart = month ? `_${month}` : '';
+  return `leistungsnachweise${monthPart}.zip`;
+}
+
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = buildFileName(trainerName, month);
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
