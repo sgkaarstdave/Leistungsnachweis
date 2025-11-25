@@ -21,55 +21,69 @@ export async function exportToExcel({ supabase, filters }) {
     const sheet = workbook.addWorksheet(trainerName || 'Trainer');
 
     sheet.columns = [
-      { header: 'Datum', key: 'date', width: 16 },
-      { header: 'Start', key: 'start', width: 10 },
-      { header: 'Ende', key: 'end', width: 10 },
-      { header: 'Dauer (Minuten)', key: 'duration', width: 16 },
-      { header: 'Trainer', key: 'trainer', width: 24 },
-      { header: 'Mannschaft', key: 'team', width: 24 },
-      { header: 'Aktivität', key: 'activity', width: 18 },
-      { header: 'Kosten', key: 'cost', width: 12 },
-      { header: 'Notizen', key: 'notes', width: 32 },
+      { key: 'date', width: 16 },
+      { key: 'start', width: 10 },
+      { key: 'end', width: 10 },
+      { key: 'duration', width: 16 },
+      { key: 'trainer', width: 24 },
+      { key: 'team', width: 24 },
+      { key: 'activity', width: 18 },
+      { key: 'cost', width: 12 },
+      { key: 'notes', width: 32 },
     ];
+
+    addTitleRow(sheet, trainerEntries, filters?.month, trainerName);
+    const headerRow = sheet.addRow([
+      'Datum',
+      'Start',
+      'Ende',
+      'Dauer (Minuten)',
+      'Trainer',
+      'Mannschaft',
+      'Aktivität',
+      'Kosten',
+      'Notizen',
+    ]);
+    styleHeaderRow(sheet, headerRow);
 
     trainerEntries.forEach((entry) => {
       sheet.addRow({
-        date: formatDate(entry.date),
-        start: entry.start_time?.slice(0, 5) || '',
-        end: entry.end_time?.slice(0, 5) || '',
-        duration: entry.duration_minutes ?? '',
+        date: toDate(entry.date),
+        start: toExcelTime(entry.start_time),
+        end: toExcelTime(entry.end_time),
+        duration: toNumber(entry.duration_minutes),
         trainer: entry.trainers?.name || 'Unbekannter Trainer',
         team: entry.teams?.name || '–',
         activity: entry.activity || '',
-        cost: formatCurrency(entry.cost),
+        cost: toNumber(entry.cost),
         notes: entry.notes || '',
       });
     });
 
-    const { totalMinutes, totalHours, totalCost } = calculateTotals(trainerEntries);
+    applyColumnFormatting(sheet);
+
+    const { totalHours, totalCost } = calculateTotals(trainerEntries);
+
+    const hoursRow = sheet.addRow(['Gesamtdauer (Stunden)', totalHours]);
+    styleSummaryRow(hoursRow, '0.00');
+
+    const costRow = sheet.addRow(['Gesamtkosten', totalCost]);
+    styleSummaryRow(costRow, '#,##0.00 [$€-407]');
 
     sheet.addRow([]);
 
-    // Summenzeilen für Gesamtstunden und Gesamtkosten
-    const hoursRow = sheet.addRow(['Gesamtdauer (Stunden):', totalHours]);
-    hoursRow.getCell(1).font = { bold: true };
-    hoursRow.getCell(2).numFmt = '0.0';
-    hoursRow.getCell(2).alignment = { horizontal: 'right' };
-
-    const costRow = sheet.addRow(['Gesamtkosten (€):', totalCost]);
-    costRow.getCell(1).font = { bold: true };
-    costRow.getCell(2).numFmt = '#,##0.00 "€"';
-    costRow.getCell(2).alignment = { horizontal: 'right' };
+    const dateRow = sheet.addRow(['Datum:', '', '', '']);
+    styleSignatureRow(sheet, dateRow, 'B');
 
     sheet.addRow([]);
 
-    // Datum und Unterschrift im Ausdruck
-    const dateRow = sheet.addRow(['Datum:', '']);
-    dateRow.getCell(1).font = { bold: true };
+    const signatureRow1 = sheet.addRow(['Unterschrift:', '', '', '']);
+    styleSignatureRow(sheet, signatureRow1, 'B');
 
-    const signatureRow = sheet.addRow(['Unterschrift Trainer:', '________________________']);
-    signatureRow.getCell(1).font = { bold: true };
-    signatureRow.getCell(2).alignment = { horizontal: 'left' };
+    const signatureRow2 = sheet.addRow(['Unterschrift:', '', '', '']);
+    styleSignatureRow(sheet, signatureRow2, 'B');
+
+    autoSizeColumns(sheet);
 
     const buffer = await workbook.xlsx.writeBuffer();
     downloadBuffer(buffer, trainerName || 'trainer', filters?.month);
@@ -122,16 +136,6 @@ function monthRange(monthValue) {
   return { start, end };
 }
 
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('de-DE');
-}
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value || 0);
-}
-
 function calculateTotals(entries) {
   const totalMinutes = entries.reduce(
     (sum, entry) => sum + toNumber(entry.duration_minutes),
@@ -146,6 +150,123 @@ function calculateTotals(entries) {
 function toNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
+}
+
+function toDate(dateStr) {
+  return dateStr ? new Date(dateStr) : '';
+}
+
+function toExcelTime(timeStr) {
+  if (!timeStr) return '';
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return '';
+  return (hours * 60 + minutes) / (24 * 60);
+}
+
+function addTitleRow(sheet, entries, monthFilter, trainerName) {
+  const monthLabel = buildMonthLabel(entries, monthFilter);
+  const title = `Leistungsnachweis – ${monthLabel} – ${trainerName || 'Unbekannter Trainer'}`;
+  const titleRow = sheet.addRow([title]);
+  sheet.mergeCells('A1:H1');
+  titleRow.height = 24;
+  titleRow.getCell(1).font = { bold: true, size: 16 };
+  titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+  titleRow.getCell(1).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFE6F0FA' },
+  };
+}
+
+function buildMonthLabel(entries, monthFilter) {
+  const baseDate = monthFilter
+    ? new Date(`${monthFilter}-01T00:00:00`)
+    : toDate(entries[0]?.date) || new Date();
+
+  return new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' }).format(baseDate);
+}
+
+function styleHeaderRow(sheet, headerRow) {
+  headerRow.font = { bold: true };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFF2F2F2' },
+  };
+
+  headerRow.eachCell((cell) => {
+    cell.border = {
+      bottom: { style: 'medium', color: { argb: 'FF999999' } },
+    };
+  });
+
+  sheet.autoFilter = {
+    from: { row: headerRow.number, column: 1 },
+    to: { row: headerRow.number, column: sheet.columnCount },
+  };
+}
+
+function applyColumnFormatting(sheet) {
+  sheet.getColumn('date').numFmt = 'dd.mm.yyyy';
+  sheet.getColumn('start').numFmt = 'hh:mm';
+  sheet.getColumn('end').numFmt = 'hh:mm';
+  sheet.getColumn('duration').numFmt = '0';
+  sheet.getColumn('cost').numFmt = '#,##0.00 [$€-407]';
+
+  ['date', 'start', 'end', 'duration', 'cost'].forEach((key) => {
+    sheet.getColumn(key).alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+}
+
+function styleSummaryRow(row, numberFormat) {
+  row.font = { bold: true };
+  row.getCell(1).alignment = { horizontal: 'left' };
+  row.getCell(2).numFmt = numberFormat;
+  row.getCell(2).alignment = { horizontal: 'right' };
+
+  row.eachCell((cell) => {
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF8FBFF' },
+    };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FFBFBFBF' } },
+      left: { style: 'thin', color: { argb: 'FFBFBFBF' } },
+      bottom: { style: 'thin', color: { argb: 'FFBFBFBF' } },
+      right: { style: 'thin', color: { argb: 'FFBFBFBF' } },
+    };
+  });
+}
+
+function styleSignatureRow(sheet, row, startColumn) {
+  row.getCell(1).font = { bold: true };
+  const startColIndex = columnIndexFromLetter(startColumn);
+  const endColIndex = startColIndex + 2;
+  sheet.mergeCells(row.number, startColIndex, row.number, endColIndex);
+  const mergedCell = row.getCell(startColIndex);
+  mergedCell.border = {
+    bottom: { style: 'thin', color: { argb: 'FF7F7F7F' } },
+  };
+}
+
+function columnIndexFromLetter(letter) {
+  return letter.toUpperCase().charCodeAt(0) - 64;
+}
+
+function autoSizeColumns(sheet) {
+  sheet.columns.forEach((column) => {
+    let maxLength = 0;
+    column.eachCell({ includeEmpty: true }, (cell) => {
+      const cellValue = cell.value?.result || cell.value || '';
+      const length = cellValue.toString().length;
+      if (length > maxLength) {
+        maxLength = length;
+      }
+    });
+    column.width = Math.min(Math.max(maxLength + 2, column.width || 10), 40);
+  });
 }
 
 function downloadBuffer(buffer, trainerName, month) {
