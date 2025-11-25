@@ -1,0 +1,16 @@
+{
+  "name": "leistungsnachweis",
+  "version": "1.0.0",
+  "description": "Eine schlanke, statische SPA für Volleyball-Trainer. Die App verbindet sich direkt aus dem Browser mit Supabase – ohne Build-Schritt, ohne ENV-Variablen. Einfach das Repo klonen und `index.html` im Browser öffnen (oder per GitHub Pages hosten).",
+  "main": "service-worker.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "jszip": "^3.10.1"
+  }
+}
